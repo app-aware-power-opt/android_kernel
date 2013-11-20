@@ -62,7 +62,7 @@ function build_android()
 	else
 		echo make -j$CPU_JOB_NUM PRODUCT-$SEC_PRODUCT-eng
 		echo
-		make -j$CPU_JOB_NUM PRODUCT-$SEC_PRODUCT-eng
+		make -j$CPU_JOB_NUM PRODUCT-$SEC_PRODUCT-eng 2>&1|tee build.log
 	fi
 	check_exit
 

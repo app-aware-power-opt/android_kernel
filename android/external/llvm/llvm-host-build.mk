@@ -59,3 +59,5 @@ $(hide) $(TBLGEN) \
 	-gen-$(strip $(1))	\
 	-o $@ $<
 endef
+
+LOCAL_LDLIBS := -lpthread -ldl
