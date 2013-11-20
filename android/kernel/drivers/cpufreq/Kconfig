@@ -236,6 +236,12 @@ config CPU_FREQ_GOV_ADAPTIVE
 
 	  If in doubt, say N.
 
+config CPU_THREAD_NUM
+	bool "number of threads"
+	default n
+	help
+	  number of threads currently running on the cpu
+
 menu "x86 CPU frequency scaling drivers"
 depends on X86
 source "drivers/cpufreq/Kconfig.x86"

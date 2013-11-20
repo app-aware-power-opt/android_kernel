@@ -826,6 +826,11 @@ static __read_mostly int scheduler_running;
  */
 int sysctl_sched_rt_runtime = 950000;
 
+#ifdef CONFIG_CPU_THREAD_NUM
+int run_thread_number;
+#endif
+
+
 static inline u64 global_rt_period(void)
 {
 	return (u64)sysctl_sched_rt_period * NSEC_PER_USEC;
@@ -3236,6 +3241,11 @@ unsigned long nr_running(void)
 	for_each_online_cpu(i)
 		sum += cpu_rq(i)->nr_running;
 
+#ifdef CONFIG_CPU_THREAD_NUM
+	//printk("nr_running = %d ------- YT\n", sum);
+	run_thread_number = sum ;
+#endif
+
 	return sum;
 }
 
@@ -3263,6 +3273,10 @@ unsigned long long nr_context_switches(void)
 
 	for_each_possible_cpu(i)
 		sum += cpu_rq(i)->nr_switches;
+
+#ifdef CONFIG_CPU_THREAD_NUM
+	//printk("nr_context_switches = %d ------- YT\n", sum);
+#endif
 
 	return sum;
 }
