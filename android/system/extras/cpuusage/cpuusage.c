@@ -27,8 +27,11 @@
 #include <pagemap/pagemap.h>
 #endif
 
+#include "scoreCalc.h"
+
 #define INTERVAL 2      /* 5 secs */
-    
+#define SCORECALC
+#define FILE_PATH (mnt/ext_usb    
 typedef struct {
     char cpu[20];
     unsigned long long user;
@@ -618,12 +621,12 @@ int main(int argc, char* argv[])
             {
                 isFirst = 0;
 
-                if (mkdir("/sdcard/cpulog", 775) == -1 && errno != EEXIST) {
+                if (mkdir("/mnt/ext_usb/cpulog", 775) == -1 && errno != EEXIST) {
                     fprintf(stderr, "Problem creating directory");
                     perror(" ");
                 }
 				
-                ofp = fopen("/sdcard/cpulog/cpulog.txt", "w");
+                ofp = fopen("/mnt/ext_usb/cpulog/cpulog.txt", "w");
                 if(ofp == NULL)
                 {
                     printf("fopen w error\n");
@@ -688,7 +691,7 @@ int main(int argc, char* argv[])
                 );
 #endif
 
-            ofp = fopen("/sdcard/cpulog/cpulog.txt", "a");
+            ofp = fopen("/mnt/ext_usb/cpulog/cpulog.txt", "a");
             if(ofp == NULL)
             {
                 printf("fopen a error\n");
@@ -736,6 +739,18 @@ int main(int argc, char* argv[])
 #endif
 		 
             fclose(ofp);
+
+			#ifdef SCORECALC
+			RESOURCE_USAGE_T stResourceUsage;
+			stResourceUsage.cpuUsage = usage100;
+			stResourceUsage.threadUsage = c0.run_thread;
+			stResourceUsage.memoryUsage = pss_portion;
+
+			int score = calcResourceScore(&stResourceUsage);
+			#endif
+
+
+
         }
         else
         {
