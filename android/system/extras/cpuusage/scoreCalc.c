@@ -7,6 +7,7 @@
 #include "scoreCalc.h"
 
 #define SCORE_POINT_NUM 11
+#define AVG_SCORE 3
 
 typedef struct {
 	int diffUsage;
@@ -22,6 +23,8 @@ typedef struct {
 	int diffUsage;
 	int score;
 }MEMORY_SCORE_T;
+
+
 
 CPU_SCORE_T astCpuScore[SCORE_POINT_NUM ] = {
 	{0, 1},
@@ -65,7 +68,7 @@ MEMORY_SCORE_T astMemoryScore[SCORE_POINT_NUM ] = {
 	{100, 20},
 };
 
-
+int aScoreResult[AVG_SCORE] = {};
 
 RESOURCE_USAGE_T calcDiff(RESOURCE_USAGE_T * stPre, RESOURCE_USAGE_T * stCur);
 
@@ -76,14 +79,27 @@ static RESOURCE_USAGE_T preUsage = {
 };
 
 
-int calcResourceScore(RESOURCE_USAGE_T *stUsage)
+SCORE_RESULT_T calcResourceScore(RESOURCE_USAGE_T *stUsage)
 {
 	int scoreResult = 0;
+	int avgScoreResult = 0;
 	int cpuScore = 0;
 	int threadScore = 0;
 	int memoryScore =0;
 	int i = 0, cpuSign = 1, threadSign = 1, memorySign = 1;
 	RESOURCE_USAGE_T stDiff;
+	SCORE_RESULT_T stResult = {};
+
+	static int * pScore = NULL;
+	static int fInitlBuffer = 1;
+	
+	//TO DO : buffer free
+	if(fInitlBuffer)
+	{
+		pScore = (int *)calloc( AVG_SCORE, sizeof(int) );
+		memset(pScore, 0, AVG_SCORE);
+		fInitlBuffer = 0;
+	}
 
 	stDiff = calcDiff(&preUsage, stUsage);
 
@@ -107,11 +123,29 @@ int calcResourceScore(RESOURCE_USAGE_T *stUsage)
 	}
 
 	scoreResult = cpuScore*cpuSign + threadScore*threadSign + memoryScore*memorySign;
+	memmove(pScore+1, pScore, sizeof(int) * (AVG_SCORE-1));
+	*pScore = scoreResult;
 
-	printf("Score CPU=%d, Thread=%d, Mem=%d, sum=%d\n", cpuScore*cpuSign, threadScore*threadSign, memoryScore*memorySign, scoreResult);
+	for (i = 0; i < AVG_SCORE; i++)
+	{
+		avgScoreResult =+ *(pScore+i);
+		avgScoreResult = avgScoreResult/AVG_SCORE;
+		//printf("Score[%d]=%d", i, *(pScore+i));
+	}
+	
+	printf("Score CPU=%d, Thread=%d, Mem=%d, sum=%d, avg=%d\n\n", 
+		cpuScore*cpuSign, threadScore*threadSign, memoryScore*memorySign, scoreResult, avgScoreResult);
 
+/*
+	for (i = 0; i < AVG_SCORE; i++)
+	{
+		printf("pointer Score[%d]=%d\n ", i, *(pScore+i));
+	}
+*/
+	stResult.score = scoreResult;
+	stResult.avgScore = avgScoreResult;
 
-	return scoreResult;
+	return stResult;
 
 };
 

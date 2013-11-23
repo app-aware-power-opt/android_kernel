@@ -494,7 +494,7 @@ float get_mem_info(void)
     total_rss /= 1024;
     total_pss /= 1024;
     total_uss /= 1024;
-    
+
     printf("%5s  %8s  %8s  %8s  %8s  %s\n",
             "", "------", "------", "------", "------", "------");
     printf("%5s  %7ldK  %7ldK  %7ldK  %7ldK  %s\n",
@@ -556,6 +556,10 @@ int main(int argc, char* argv[])
 
 #ifdef PROC_MEM
     float pss_portion = 0;
+#endif
+
+#ifdef SCORECALC
+	SCORE_RESULT_T stScore = {};
 #endif
 
     if (argc != 3) {
@@ -634,7 +638,7 @@ int main(int argc, char* argv[])
                 }
 
 #if defined(CPU_THREAD) && defined(CPU_FREQ) && defined(PROC_MEM) && defined(SCORECALC)
-                fprintf(ofp, "[%5.5s],[%5.5s],[%5.5s], [%5.5s],[%5.5s],[%5.5s],[%5.5s],[%5.5s],[%5.5s]\n", "time","cpu","thread", "freq0", "freq1","freq2","freq3", "mem","score");
+                fprintf(ofp, "[%5.5s],[%5.5s],[%5.5s], [%5.5s],[%5.5s],[%5.5s],[%5.5s],[%5.5s],[%5.5s],[%5.5s]\n", "time","cpu","thread", "freq0", "freq1","freq2","freq3", "mem","score", "avgScore");
 #elif defined(CPU_THREAD) && defined(CPU_FREQ) && defined(PROC_MEM)
                 fprintf(ofp, "[%5.5s],[%5.5s],[%5.5s], [%5.5s],[%5.5s],[%5.5s],[%5.5s],[%5.5s]\n", "time","cpu","thread", "freq0", "freq1","freq2","freq3", "mem");
 #elif defined (CPU_THREAD) && defined(CPU_FREQ) 
@@ -706,12 +710,12 @@ int main(int argc, char* argv[])
 			stResourceUsage.threadUsage = c0.run_thread;
 			stResourceUsage.memoryUsage = pss_portion;
 
-			int score = calcResourceScore(&stResourceUsage);
+			stScore = calcResourceScore(&stResourceUsage);
 			#endif
 
 
 #if defined(CPU_THREAD) && defined(CPU_FREQ) && defined(SCORECALC)
-            fprintf(ofp, "%6.2fs,%4llu.%02llu, %7d, %7d, %7d, %7d, %7d, %4.2f,%7d \n",
+            fprintf(ofp, "%6.2fs,%4llu.%02llu, %7d, %7d, %7d, %7d, %7d, %4.2f,%7d,%7d \n",
                     (double)timeStamp/CLOCKS_PER_SEC,
                     usage100/100, usage100%100,
                     c0.run_thread,
@@ -720,7 +724,8 @@ int main(int argc, char* argv[])
                     c2.scaling_cur_freq,
                     c3.scaling_cur_freq,
                     pss_portion,
-                    score
+                    stScore.score,
+                    stScore.avgScore
             );
 
 #elif defined(CPU_THREAD) && defined(CPU_FREQ)
