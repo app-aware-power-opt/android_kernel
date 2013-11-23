@@ -3,8 +3,68 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-
+#include <math.h>
 #include "scoreCalc.h"
+
+#define SCORE_POINT_NUM 11
+
+typedef struct {
+	int diffUsage;
+	int score;
+}CPU_SCORE_T;
+
+typedef struct {
+	int diffUsage;
+	int score;
+}THREAD_SCORE_T;
+
+typedef struct {
+	int diffUsage;
+	int score;
+}MEMORY_SCORE_T;
+
+CPU_SCORE_T astCpuScore[SCORE_POINT_NUM ] = {
+	{0, 1},
+	{10, 2},
+	{20, 3},
+	{30, 4},
+	{40, 5},
+	{50, 6},
+	{60, 7},
+	{70, 8},
+	{80, 9},
+	{90, 10},
+	{100, 20},
+};
+
+THREAD_SCORE_T astThreadScore[SCORE_POINT_NUM ] = {
+	{0, 1},
+	{1, 2},
+	{2, 3},
+	{3, 4},
+	{4, 5},
+	{5, 6},
+	{6, 7},
+	{7, 8},
+	{8, 9},
+	{9, 10},
+	{10, 20},
+};
+
+MEMORY_SCORE_T astMemoryScore[SCORE_POINT_NUM ] = {
+	{0, 1},
+	{10, 2},
+	{20, 3},
+	{30, 4},
+	{40, 5},
+	{50, 6},
+	{60, 7},
+	{70, 8},
+	{80, 9},
+	{90, 10},
+	{100, 20},
+};
+
 
 
 RESOURCE_USAGE_T calcDiff(RESOURCE_USAGE_T * stPre, RESOURCE_USAGE_T * stCur);
@@ -19,16 +79,36 @@ static RESOURCE_USAGE_T preUsage = {
 int calcResourceScore(RESOURCE_USAGE_T *stUsage)
 {
 	int scoreResult = 0;
+	int cpuScore = 0;
+	int threadScore = 0;
+	int memoryScore =0;
+	int i = 0, cpuSign = 1, threadSign = 1, memorySign = 1;
+	RESOURCE_USAGE_T stDiff;
 
-	RESOURCE_USAGE_T diffUsage;
+	stDiff = calcDiff(&preUsage, stUsage);
 
-	diffUsage = calcDiff(&preUsage, stUsage);
-	
 	preUsage = *stUsage;
 
+	//printf("copy preCPU=%4.2f, preThread=%d, preMem=%4.2f\n", preUsage.cpuUsage, preUsage.threadUsage, preUsage.memoryUsage);
+
+	if(stDiff.cpuUsage < 0)	cpuSign = -1;
+	if(stDiff.threadUsage < 0)	threadSign = -1;
+	if(stDiff.memoryUsage < 0)	memorySign = -1;
 
 
+	for (i = 0; i < SCORE_POINT_NUM-1; i++)
+	{
+		if( abs(stDiff.cpuUsage) > astCpuScore[i].diffUsage &&  abs(stDiff.cpuUsage) <= astCpuScore[i+1].diffUsage )
+ 			cpuScore = astCpuScore[i].score;
+		if( abs(stDiff.threadUsage) > astThreadScore[i].diffUsage && abs(stDiff.threadUsage) <= astThreadScore[i+1].diffUsage )
+ 			threadScore = astThreadScore[i].score;
+		if( abs(stDiff.memoryUsage) > astMemoryScore[i].diffUsage &&  abs(stDiff.memoryUsage) <= astMemoryScore[i+1].diffUsage )
+ 			memoryScore = astMemoryScore[i].score;
+	}
 
+	scoreResult = cpuScore*cpuSign + threadScore*threadSign + memoryScore*memorySign;
+
+	printf("Score CPU=%d, Thread=%d, Mem=%d, sum=%d\n", cpuScore*cpuSign, threadScore*threadSign, memoryScore*memorySign, scoreResult);
 
 
 	return scoreResult;
@@ -42,9 +122,9 @@ RESOURCE_USAGE_T calcDiff(RESOURCE_USAGE_T * stPre, RESOURCE_USAGE_T * stCur)
 	stDiff.threadUsage = stCur->threadUsage - stPre->threadUsage;
 	stDiff.memoryUsage = stCur->memoryUsage - stPre->memoryUsage;
 
-	printf("curCPU=%4lu.%4lu, curThread=%d, curMem=%4.2f\n", stCur->cpuUsage/100, stCur->cpuUsage%100, stCur->threadUsage, stCur->memoryUsage);
-
-	printf("diffCPU=%4lu.%4lu, diffThread=%d, diffMem=%4.2f\n", stDiff.cpuUsage/100, stCur->cpuUsage%100, stDiff.threadUsage, stDiff.memoryUsage);
+	printf("curCPU=%4.2f, curThread=%d, curMem=%4.2f\n", stCur->cpuUsage, stCur->threadUsage, stCur->memoryUsage);
+	printf("preCPU=%4.2f, preThread=%d, preMem=%4.2f\n", stPre->cpuUsage, stPre->threadUsage, stPre->memoryUsage);
+	printf("diffCPU=%4.2f, diffThread=%d, diffMem=%4.2f\n", stDiff.cpuUsage, stDiff.threadUsage, stDiff.memoryUsage);
 
 	
 	return stDiff;

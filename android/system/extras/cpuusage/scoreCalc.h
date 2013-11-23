@@ -1,6 +1,6 @@
 typedef struct
 {
-	long cpuUsage;
+	float cpuUsage;
 	int threadUsage;
 	float memoryUsage;
 }RESOURCE_USAGE_T;

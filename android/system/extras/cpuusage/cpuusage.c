@@ -621,19 +621,21 @@ int main(int argc, char* argv[])
             {
                 isFirst = 0;
 
-                if (mkdir("/mnt/ext_usb/cpulog", 775) == -1 && errno != EEXIST) {
+                if (mkdir("/data/cpulog", 775) == -1 && errno != EEXIST) {
                     fprintf(stderr, "Problem creating directory");
                     perror(" ");
                 }
 				
-                ofp = fopen("/mnt/ext_usb/cpulog/cpulog.txt", "w");
+                ofp = fopen("/data/cpulog/cpulog.txt", "w");
                 if(ofp == NULL)
                 {
                     printf("fopen w error\n");
                     return 0;
                 }
 
-#if defined(CPU_THREAD) && defined(CPU_FREQ) && defined(PROC_MEM)
+#if defined(CPU_THREAD) && defined(CPU_FREQ) && defined(PROC_MEM) && defined(SCORECALC)
+                fprintf(ofp, "[%5.5s],[%5.5s],[%5.5s], [%5.5s],[%5.5s],[%5.5s],[%5.5s],[%5.5s],[%5.5s]\n", "time","cpu","thread", "freq0", "freq1","freq2","freq3", "mem","score");
+#elif defined(CPU_THREAD) && defined(CPU_FREQ) && defined(PROC_MEM)
                 fprintf(ofp, "[%5.5s],[%5.5s],[%5.5s], [%5.5s],[%5.5s],[%5.5s],[%5.5s],[%5.5s]\n", "time","cpu","thread", "freq0", "freq1","freq2","freq3", "mem");
 #elif defined (CPU_THREAD) && defined(CPU_FREQ) 
                 fprintf(ofp, "[%5.5s],[%5.5s],[%5.5s], [%5.5s],[%5.5s],[%5.5s],[%5.5s]\n", "time","cpu","thread", "freq0", "freq1","freq2","freq3");
@@ -691,14 +693,37 @@ int main(int argc, char* argv[])
                 );
 #endif
 
-            ofp = fopen("/mnt/ext_usb/cpulog/cpulog.txt", "a");
+            ofp = fopen("/data/cpulog/cpulog.txt", "a");
             if(ofp == NULL)
             {
                 printf("fopen a error\n");
                 return 0;
             }		
 
-#if defined(CPU_THREAD) && defined(CPU_FREQ)
+			#ifdef SCORECALC
+			RESOURCE_USAGE_T stResourceUsage;
+			stResourceUsage.cpuUsage = (float)usage100/100;
+			stResourceUsage.threadUsage = c0.run_thread;
+			stResourceUsage.memoryUsage = pss_portion;
+
+			int score = calcResourceScore(&stResourceUsage);
+			#endif
+
+
+#if defined(CPU_THREAD) && defined(CPU_FREQ) && defined(SCORECALC)
+            fprintf(ofp, "%6.2fs,%4llu.%02llu, %7d, %7d, %7d, %7d, %7d, %4.2f,%7d \n",
+                    (double)timeStamp/CLOCKS_PER_SEC,
+                    usage100/100, usage100%100,
+                    c0.run_thread,
+                    c0.scaling_cur_freq,
+                    c1.scaling_cur_freq,
+                    c2.scaling_cur_freq,
+                    c3.scaling_cur_freq,
+                    pss_portion,
+                    score
+            );
+
+#elif defined(CPU_THREAD) && defined(CPU_FREQ)
             fprintf(ofp, "%6.2fs,%4llu.%02llu, %7d, %7d, %7d, %7d, %7d, %4.2f \n",
                     (double)timeStamp/CLOCKS_PER_SEC,
                     usage100/100, usage100%100,
@@ -739,16 +764,6 @@ int main(int argc, char* argv[])
 #endif
 		 
             fclose(ofp);
-
-			#ifdef SCORECALC
-			RESOURCE_USAGE_T stResourceUsage;
-			stResourceUsage.cpuUsage = usage100;
-			stResourceUsage.threadUsage = c0.run_thread;
-			stResourceUsage.memoryUsage = pss_portion;
-
-			int score = calcResourceScore(&stResourceUsage);
-			#endif
-
 
 
         }
