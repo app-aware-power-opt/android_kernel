@@ -1,7 +1,7 @@
 LOCAL_PATH := $(call my-dir)
 include $(CLEAR_VARS)
  
-LOCAL_SRC_FILES := cpuusage.c
+LOCAL_SRC_FILES := cpuusage.c scoreCalc.c meminfo.c cpuinfo.c
  
 LOCAL_SHARED_LIBRARIES := libcutils
 LOCAL_CFLAGS := -DANDROID_COMPATIBLE -Wall
