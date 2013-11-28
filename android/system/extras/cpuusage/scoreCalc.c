@@ -82,7 +82,8 @@ static RESOURCE_USAGE_T preUsage = {
 SCORE_RESULT_T calcResourceScore(RESOURCE_USAGE_T *stUsage)
 {
 	int scoreResult = 0;
-	int avgScoreResult = 0;
+	int scoreSum = 0;
+	float avgScoreResult = 0;
 	int cpuScore = 0;
 	int threadScore = 0;
 	int memoryScore =0;
@@ -111,7 +112,7 @@ SCORE_RESULT_T calcResourceScore(RESOURCE_USAGE_T *stUsage)
 	if(stDiff.threadUsage < 0)	threadSign = -1;
 	if(stDiff.memoryUsage < 0)	memorySign = -1;
 
-
+/*
 	for (i = 0; i < SCORE_POINT_NUM-1; i++)
 	{
 		if( abs(stDiff.cpuUsage) > astCpuScore[i].diffUsage &&  abs(stDiff.cpuUsage) <= astCpuScore[i+1].diffUsage )
@@ -121,19 +122,58 @@ SCORE_RESULT_T calcResourceScore(RESOURCE_USAGE_T *stUsage)
 		if( abs(stDiff.memoryUsage) > astMemoryScore[i].diffUsage &&  abs(stDiff.memoryUsage) <= astMemoryScore[i+1].diffUsage )
  			memoryScore = astMemoryScore[i].score;
 	}
+*/
+	i = SCORE_POINT_NUM-1;
+	while (i >= 0)
+	{
+		if( abs(stDiff.cpuUsage) > astCpuScore[i].diffUsage){
+ 			cpuScore = astCpuScore[i].score;
+			break;
+		}
+		else{
+			i--;
+		}
+	}
 
+	i = SCORE_POINT_NUM-1;
+	while (i >= 0)
+	{
+		if( abs(stDiff.threadUsage) > astThreadScore[i].diffUsage){
+ 			threadScore = astThreadScore[i].score;
+			break;
+		}
+		else{
+			i--;
+		}
+	}
+	
+	i = SCORE_POINT_NUM-1;
+	while (i >= 0)
+	{
+		if( abs(stDiff.memoryUsage) > astMemoryScore[i].diffUsage){
+ 			memoryScore = astMemoryScore[i].score;
+			break;
+		}
+		else{
+			i--;
+		}
+	}
+	
 	scoreResult = cpuScore*cpuSign + threadScore*threadSign + memoryScore*memorySign;
 	memmove(pScore+1, pScore, sizeof(int) * (AVG_SCORE-1));
 	*pScore = scoreResult;
 
 	for (i = 0; i < AVG_SCORE; i++)
 	{
-		avgScoreResult =+ *(pScore+i);
-		avgScoreResult = avgScoreResult/AVG_SCORE;
+		scoreSum += *(pScore+i);
 		//printf("Score[%d]=%d", i, *(pScore+i));
+
+		//if(i == AVG_SCORE-1)
+			//printf("	sum=[%d]\n", scoreSum);
 	}
-	
-	printf("Score CPU=%d, Thread=%d, Mem=%d, sum=%d, avg=%d\n\n", 
+
+	avgScoreResult = (float)scoreSum/AVG_SCORE;	
+	printf("Score CPU=%d, Thread=%d, Mem=%d, sum=%d, avg=%.2f\n\n", 
 		cpuScore*cpuSign, threadScore*threadSign, memoryScore*memorySign, scoreResult, avgScoreResult);
 
 /*

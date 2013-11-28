@@ -140,7 +140,7 @@ int main(int argc, char* argv[])
     logInterval = atoi(argv[1]) * 1000;
     logTime = atoi(argv[2]);
 
-    printf("\n v1.0 log Interval = %d[us] log Time = %d[s]\n", logInterval, logTime);
+    printf("\n v1.3 log Interval = %d[us] log Time = %d[s]\n", logInterval, logTime);
 		
     time(&old);
 	read_proc_stat(&stPreCpuUsage);
@@ -286,7 +286,7 @@ int main(int argc, char* argv[])
 
 
 #if defined(CPU_THREAD) && defined(CPU_FREQ) && defined(SCORECALC)
-            fprintf(ofp, "%6.2fs,%4llu.%02llu, %7d, %7d, %7d, %7d, %7d, %4.2f,%7d,%7d \n",
+            fprintf(ofp, "%6.2fs,%4llu.%02llu, %7d, %7d, %7d, %7d, %7d, %4.2f,%7d,%.2f \n",
                     (double)timeStamp/CLOCKS_PER_SEC,
                     usage100/100, usage100%100,
                     c0.run_thread,

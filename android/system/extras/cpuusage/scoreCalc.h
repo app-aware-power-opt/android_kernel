@@ -7,7 +7,7 @@ typedef struct
 
 typedef struct {
 	int score;
-	int avgScore;
+	float avgScore;
 }SCORE_RESULT_T;
 
 SCORE_RESULT_T calcResourceScore(RESOURCE_USAGE_T *stUsage);
