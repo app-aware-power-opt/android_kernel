@@ -98,7 +98,7 @@ void diff_proc_stat(procstat_t *a, procstat_t *b, procstat_t *d)
 
 int main(int argc, char* argv[])
 {
-    procstat_t m1,m2;
+    procstat_t stPreCpuUsage, stCurCpuUsage;
     procstat_t d;
     procstat_t u100; /* percentages(%x100) per total */
 
@@ -140,20 +140,23 @@ int main(int argc, char* argv[])
     logInterval = atoi(argv[1]) * 1000;
     logTime = atoi(argv[2]);
 
-    printf("\nlog Interval = %d[us] log Time = %d[s]\n", logInterval, logTime);
+    printf("\n v1.0 log Interval = %d[us] log Time = %d[s]\n", logInterval, logTime);
 		
     time(&old);
+	read_proc_stat(&stPreCpuUsage);
 	
     while(1)
     {
         time(&new);
         if(difftime(new, old) < logTime)
         {
+			usleep(logInterval);
+			
             timeStamp = clock();
-            read_proc_stat(&m1);
-            usleep(logInterval);
-            read_proc_stat(&m2);
-            diff_proc_stat(&m2, &m1, &d);
+
+            read_proc_stat(&stCurCpuUsage);
+            diff_proc_stat(&stCurCpuUsage, &stPreCpuUsage, &d);
+			stPreCpuUsage = stCurCpuUsage;
 
 #ifdef CPU_THREAD
             read_run_thread_number(&c0);
