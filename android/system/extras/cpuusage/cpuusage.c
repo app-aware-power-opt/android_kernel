@@ -198,7 +198,13 @@ int main(int argc, char* argv[])
                     fprintf(stderr, "Problem creating directory");
                     perror(" ");
                 }
-				
+
+
+				#ifdef SCORECALC
+				//Load each Usage  & Score value data from Text files.
+				loadUsageScoreValue();
+				#endif
+
                 ofp = fopen("/data/cpulog/cpulog.txt", "w");
                 if(ofp == NULL)
                 {

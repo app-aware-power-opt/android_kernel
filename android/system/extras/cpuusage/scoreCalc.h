@@ -12,4 +12,6 @@ typedef struct {
 
 SCORE_RESULT_T calcResourceScore(RESOURCE_USAGE_T *stUsage);
 
+int loadUsageScoreValue(void);
+
 		
