@@ -580,6 +580,25 @@ static ssize_t show_run_thread(struct cpufreq_policy *policy, char *buf)
 }
 #endif
 
+#ifdef CONFIG_CPU_FREQ_DBG
+int use_pss_or_meminfo = 0;
+static ssize_t show_use_pss(struct cpufreq_policy *policy, char *buf)
+{
+
+	return sprintf(buf, "%d\n", use_pss_or_meminfo);
+}
+static ssize_t store_use_pss(struct cpufreq_policy *policy,
+					const char *buf, size_t count)
+{
+	int ret;
+	ret = sscanf(buf, "%d", &use_pss_or_meminfo);
+	if (ret != 1)
+		return -EINVAL;
+
+	return use_pss_or_meminfo;
+}
+#endif
+
 cpufreq_freq_attr_ro_perm(cpuinfo_cur_freq, 0400);
 cpufreq_freq_attr_ro(cpuinfo_min_freq);
 cpufreq_freq_attr_ro(cpuinfo_max_freq);
@@ -597,7 +616,9 @@ cpufreq_freq_attr_rw(scaling_setspeed);
 #ifdef CONFIG_CPU_THREAD_NUM
 cpufreq_freq_attr_ro(run_thread);
 #endif
-
+#ifdef CONFIG_CPU_FREQ_DBG
+cpufreq_freq_attr_rw(use_pss);
+#endif
 
 static struct attribute *default_attrs[] = {
 	&cpuinfo_min_freq.attr,
@@ -613,6 +634,9 @@ static struct attribute *default_attrs[] = {
 	&scaling_setspeed.attr,
 #ifdef CONFIG_CPU_THREAD_NUM
 	&run_thread.attr,
+#endif
+#ifdef CONFIG_CPU_FREQ_DBG
+	&use_pss.attr,
 #endif
 	NULL
 };

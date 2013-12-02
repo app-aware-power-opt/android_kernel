@@ -121,7 +121,7 @@ int main(int argc, char* argv[])
     int logTime = 0;
 
 #ifdef PROC_MEM
-    float pss_portion = 0;
+    float mem_portion = 0;
 #endif
 
 #ifdef SCORECALC
@@ -170,8 +170,8 @@ int main(int argc, char* argv[])
 #endif
 
 #ifdef PROC_MEM
-            pss_portion = get_mem_info();
-            //printf("PSS : %7.2f%%\n", pss_portion);
+            mem_portion = get_mem_info();
+            //printf("PSS : %7.2f%%\n", mem_portion);
 #endif
 
             total = d.user + d.system + d.nice + d.idle + d.iowait + d.irq + d.softirq + d.steal + d.guest + d.guest_nice;
@@ -243,7 +243,7 @@ int main(int argc, char* argv[])
                     c1.scaling_cur_freq,
                     c2.scaling_cur_freq,
                     c3.scaling_cur_freq,
-                    pss_portion
+                    mem_portion
             );
 #elif defined (CPU_THREAD) && defined(CPU_FREQ) 
             printf("%6.2fs,%4llu.%02llu, %7d,%7d, %7d, %7d, %7d \n",
@@ -285,7 +285,7 @@ int main(int argc, char* argv[])
 			RESOURCE_USAGE_T stResourceUsage;
 			stResourceUsage.cpuUsage = (float)usage100/100;
 			stResourceUsage.threadUsage = c0.run_thread;
-			stResourceUsage.memoryUsage = pss_portion;
+			stResourceUsage.memoryUsage = mem_portion;
 
 			stScore = calcResourceScore(&stResourceUsage);
 			#endif
@@ -300,7 +300,7 @@ int main(int argc, char* argv[])
                     c1.scaling_cur_freq,
                     c2.scaling_cur_freq,
                     c3.scaling_cur_freq,
-                    pss_portion,
+                    mem_portion,
                     stScore.score,
                     stScore.avgScore
             );
@@ -314,7 +314,7 @@ int main(int argc, char* argv[])
                     c1.scaling_cur_freq,
                     c2.scaling_cur_freq,
                     c3.scaling_cur_freq,
-                    pss_portion
+                    mem_portion
             );
 #elif defined (CPU_THREAD) && defined(CPU_FREQ) 
             fprintf(ofp, "%6.2fs,%4llu.%02llu, %7d, %7d, %7d, %7d, %7d \n",
