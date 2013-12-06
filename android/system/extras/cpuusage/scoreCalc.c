@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <math.h>
 #include "scoreCalc.h"
+#include "cpufreq.h"
 
 #define MEM_SCORE_POINT_NUM 20
 #define FREQ_SCORE_POINT_NUM 20
@@ -474,7 +475,11 @@ SCORE_RESULT_T calcResourceScore(RESOURCE_USAGE_T *stUsage)
 
 			minusContinueCount = 0;
 			if ( plusContinueCount > continueThreshold)
+			{
 				stResult.finalDecision = 1;
+				//set_cpufreq_to_min();
+				set_cpufreq_to_prev_step();
+			}
 			else 
 				plusContinueCount++;
 			
@@ -483,7 +488,11 @@ SCORE_RESULT_T calcResourceScore(RESOURCE_USAGE_T *stUsage)
 
 			plusContinueCount = 0;
 			if ( minusContinueCount > continueThreshold)
+			{
 				stResult.finalDecision = -1;
+				//set_cpufreq_to_max();
+				set_cpufreq_to_next_step();
+			}
 			else 
 				minusContinueCount++;
 			
@@ -492,6 +501,7 @@ SCORE_RESULT_T calcResourceScore(RESOURCE_USAGE_T *stUsage)
 			plusContinueCount = 0;
 			minusContinueCount = 0;
 			stResult.finalDecision = 0;
+			//set_scaling_governor(G_ONDEMAND);
 		}
 
 	return stResult;
