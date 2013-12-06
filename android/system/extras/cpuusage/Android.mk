@@ -1,7 +1,7 @@
 LOCAL_PATH := $(call my-dir)
 include $(CLEAR_VARS)
  
-LOCAL_SRC_FILES := cpuusage.c scoreCalc.c meminfo.c cpuinfo.c
+LOCAL_SRC_FILES := cpuusage.c scoreCalc.c meminfo.c cpuinfo.c cpufreq.c
  
 LOCAL_SHARED_LIBRARIES := libcutils
 LOCAL_CFLAGS := -DANDROID_COMPATIBLE -Wall
@@ -18,5 +18,7 @@ LOCAL_CFLAGS += -DCPU_THREAD
 LOCAL_CFLAGS += -DPROC_MEM
 LOCAL_C_INCLUDES := $(call include-path-for, libpagemap)
 LOCAL_SHARED_LIBRARIES += libpagemap
+
+LOCAL_CFLAGS += -DCPU_FREQ
 
 include $(BUILD_EXECUTABLE)
