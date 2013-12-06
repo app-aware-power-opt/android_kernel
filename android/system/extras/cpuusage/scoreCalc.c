@@ -6,9 +6,9 @@
 #include <math.h>
 #include "scoreCalc.h"
 
-#define MEM_SCORE_POINT_NUM 11
+#define MEM_SCORE_POINT_NUM 20
 #define FREQ_SCORE_POINT_NUM 20
-#define THREAD_SCORE_POINT_NUM 10
+#define THREAD_SCORE_POINT_NUM 20
 #define AVG_SCORE 3
 
 typedef struct {
