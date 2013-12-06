@@ -1,13 +1,15 @@
 typedef struct
 {
-	float cpuUsage;
+	int cpuUsage;
 	int threadUsage;
 	float memoryUsage;
+	int cpuFreq;
 }RESOURCE_USAGE_T;
 
 typedef struct {
 	int score;
 	float avgScore;
+	int finalDecision;
 }SCORE_RESULT_T;
 
 SCORE_RESULT_T calcResourceScore(RESOURCE_USAGE_T *stUsage);

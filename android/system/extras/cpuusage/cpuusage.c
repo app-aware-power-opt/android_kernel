@@ -126,6 +126,7 @@ int main(int argc, char* argv[])
 
 #ifdef SCORECALC
 	SCORE_RESULT_T stScore = {};
+	int final_descision = 0;
 #endif
 
     if (argc != 3) {
@@ -286,13 +287,14 @@ int main(int argc, char* argv[])
 			stResourceUsage.cpuUsage = (float)usage100/100;
 			stResourceUsage.threadUsage = c0.run_thread;
 			stResourceUsage.memoryUsage = mem_portion;
+			stResourceUsage.cpuFreq = c0.scaling_cur_freq/1000;
 
 			stScore = calcResourceScore(&stResourceUsage);
 			#endif
 
 
 #if defined(CPU_THREAD) && defined(CPU_FREQ) && defined(SCORECALC)
-            fprintf(ofp, "%6.2fs,%4llu.%02llu, %7d, %7d, %7d, %7d, %7d, %4.2f,%7d,%.2f \n",
+            fprintf(ofp, "%6.2fs,%4llu.%02llu, %7d, %7d, %7d, %7d, %7d, %4.2f,%7d,%7d \n",
                     (double)timeStamp/CLOCKS_PER_SEC,
                     usage100/100, usage100%100,
                     c0.run_thread,
@@ -302,7 +304,7 @@ int main(int argc, char* argv[])
                     c3.scaling_cur_freq,
                     mem_portion,
                     stScore.score,
-                    stScore.avgScore
+                    stScore.finalDecision
             );
 
 #elif defined(CPU_THREAD) && defined(CPU_FREQ)

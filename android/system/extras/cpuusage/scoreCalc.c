@@ -6,16 +6,18 @@
 #include <math.h>
 #include "scoreCalc.h"
 
-#define SCORE_POINT_NUM 11
+#define MEM_SCORE_POINT_NUM 11
+#define FREQ_SCORE_POINT_NUM 20
+#define THREAD_SCORE_POINT_NUM 10
 #define AVG_SCORE 3
 
 typedef struct {
-	int diffUsage;
+	int cpuFreq;
 	int score;
 }CPU_SCORE_T;
 
 typedef struct {
-	int diffUsage;
+	int threadNum;
 	int score;
 }THREAD_SCORE_T;
 
@@ -26,7 +28,7 @@ typedef struct {
 
 
 
-CPU_SCORE_T astCpuScore[SCORE_POINT_NUM ];
+CPU_SCORE_T astCpuScore[FREQ_SCORE_POINT_NUM ];
 
 //Data is loaded from Text file
 
@@ -46,7 +48,7 @@ CPU_SCORE_T astCpuScore[SCORE_POINT_NUM ];
 };
 */
 
-THREAD_SCORE_T astThreadScore[SCORE_POINT_NUM ];
+THREAD_SCORE_T astThreadScore[THREAD_SCORE_POINT_NUM ];
 
 /*
 = {
@@ -64,7 +66,7 @@ THREAD_SCORE_T astThreadScore[SCORE_POINT_NUM ];
 };
 */
 
-MEMORY_SCORE_T astMemoryScore[SCORE_POINT_NUM ];
+MEMORY_SCORE_T astMemoryScore[MEM_SCORE_POINT_NUM ];
 
 /*
 = {
@@ -82,6 +84,11 @@ MEMORY_SCORE_T astMemoryScore[SCORE_POINT_NUM ];
 };
 */
 
+int plusThreshold;
+int minusThreshold;
+int continueThreshold;
+int plusContinueCount = 0;
+int minusContinueCount = 0;
 int aScoreResult[AVG_SCORE] = {};
 
 RESOURCE_USAGE_T calcDiff(RESOURCE_USAGE_T * stPre, RESOURCE_USAGE_T * stCur);
@@ -89,7 +96,7 @@ RESOURCE_USAGE_T calcDiff(RESOURCE_USAGE_T * stPre, RESOURCE_USAGE_T * stCur);
 static RESOURCE_USAGE_T preUsage = {
 	.cpuUsage = 20,
 	.threadUsage = 2,
-	.memoryUsage = 20,
+	.memoryUsage = 8,
 };
 
 
@@ -109,22 +116,23 @@ int tableFilesCheck(void){
 	FILE *fp ;
 
 	char * file_name[6]  = {
-		"/data/cpulog/usage.txt", //CPU Usage Step data
-		"/data/cpulog/usagescore.txt", //CPU Usage Score data
+		"/data/cpulog/freq.txt", //CPU Usage Step data
+		"/data/cpulog/freqscore.txt", //CPU Usage Score data
 		"/data/cpulog/thread.txt", //CPU Thread Step data
 		"/data/cpulog/threadscore.txt", //CPU Thread Score data
 		"/data/cpulog/mem.txt", //Memory Usage Step data
 		"/data/cpulog/memscore.txt" //Memory Usage Score data
 	};
 
-	int initValue[6][11] ={
-		{0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100}, //CPU Usage
-		{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20}, //CPU Usage Score
-		{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10}, //CPU Thread Number
-		{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20}, //CPU Thread Score
-		{0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100}, //Memory Usage
-		{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20} //Memory Score
+	int initValue[6][20] ={
+		{200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1704}, //CPU Freq
+		{0, 7, 13, 20, 26, 33, 40, 46, 53, 60, 68, 74, 80, 87, 93, 100}, //CPU Freq Score
+		{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}, //CPU Thread Number
+		{0, 20, 30, 50, 70, 81, 91, 94, 97, 100}, //CPU Thread Score
+		{0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20}, //Memory Usage
+		{0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100} //Memory Score
 		};
+	int initTune[3] = { 100, -30, 1}; //0- Plus Threshold, 1-Minus Threshold 2-Continue Threshold
 
 	for (i=0; i<6 ; i++){
 
@@ -143,9 +151,9 @@ int tableFilesCheck(void){
 				}
 
 
-			for (j=0; j<11;j++){
+			for (j=0; j<20;j++){
 
-				if ( j == 10)
+				if ( j == 19)
 					fprintf(fp, "%d\n", initValue[i][j]);
 				else
 					fprintf(fp, "%d ", initValue[i][j]);
@@ -158,6 +166,29 @@ int tableFilesCheck(void){
 		
 			}
 		
+		}
+
+
+	if ( 0 == access("/data/cpulog/tune.txt", F_OK)){
+		printf( "%s file already exists.\n", "tune.txt");
+		}
+	
+	else{
+		//If there is no data text file, the file will be generated with initial value.
+		fp = fopen( file_name[i], "wt");
+
+		fp = fopen( "/data/cpulog/tune.txt", "wt");
+		if(fp == NULL){
+				printf("fopen w error\n");
+				return 0;
+				}
+
+		for (i=0; i<3 ;i++){
+			//if ( i == 2)
+				fprintf(fp, "%d\n", initTune[i]);
+			//else
+			//	fprintf(fp, "%d", initTune[i]);
+			}
 		}
 
 	return 0;
@@ -176,14 +207,14 @@ int loadUsageScoreValue(void){
 	tableFilesCheck();
 
 	//cpuusage.txt file has CPU Usage table data.
-	fp = fopen("/data/cpulog/usage.txt", "rt");
+	fp = fopen("/data/cpulog/freq.txt", "rt");
 	if(fp == NULL){
 		printf("fopen open error\n");
 		return 0;
 		}
 	
 	while(fscanf(fp, "%d", &data) != EOF){
-		astCpuScore[i].diffUsage = data;
+		astCpuScore[i].cpuFreq= data;
 		i++;
 		}
 	
@@ -191,7 +222,7 @@ int loadUsageScoreValue(void){
 	fclose(fp);
 	
 	//usagescore.txt file has CPU Usage Score data.
-	fp = fopen("/data/cpulog/usagescore.txt", "rt");
+	fp = fopen("/data/cpulog/freqscore.txt", "rt");
 	if(fp == NULL){
 		printf("fopen open error\n");
 		return 0;
@@ -213,7 +244,7 @@ int loadUsageScoreValue(void){
 		}
 	
 	while(fscanf(fp, "%d", &data) != EOF){
-		astThreadScore[i].diffUsage = data;
+		astThreadScore[i].threadNum= data;
 		i++;
 		}
 							
@@ -265,6 +296,18 @@ int loadUsageScoreValue(void){
 		i = 0;						
 	fclose(fp);
 
+	//tune.txt file has Tune value data.
+	fp = fopen("/data/cpulog/tune.txt", "rt");
+	if(fp == NULL){
+		printf("fopen open error\n");
+		return 0;
+		}
+	
+	fscanf(fp, "%d", &plusThreshold);
+	fscanf(fp, "%d", &minusThreshold);
+	fscanf(fp, "%d", &continueThreshold);
+					
+	fclose(fp);
 	
 
 	return 0;
@@ -277,10 +320,12 @@ SCORE_RESULT_T calcResourceScore(RESOURCE_USAGE_T *stUsage)
 	int scoreResult = 0;
 	int scoreSum = 0;
 	float avgScoreResult = 0;
+	int cpuFreqScore = 0;
 	int cpuScore = 0;
 	int threadScore = 0;
 	int memoryScore =0;
 	int i = 0, cpuSign = 1, threadSign = 1, memorySign = 1;
+	float diff_memoryUsage;
 	RESOURCE_USAGE_T stDiff;
 	SCORE_RESULT_T stResult = {};
 
@@ -295,15 +340,16 @@ SCORE_RESULT_T calcResourceScore(RESOURCE_USAGE_T *stUsage)
 		fInitlBuffer = 0;
 	}
 
+	diff_memoryUsage = stUsage->memoryUsage - preUsage.memoryUsage;
 	stDiff = calcDiff(&preUsage, stUsage);
 
 	preUsage = *stUsage;
 
-	//printf("copy preCPU=%4.2f, preThread=%d, preMem=%4.2f\n", preUsage.cpuUsage, preUsage.threadUsage, preUsage.memoryUsage);
+	//printf("copy Freq = %d preCPU=%d, preThread=%d, preMem=%4.2f\n", stUsage->cpuFreq, preUsage.cpuUsage, preUsage.threadUsage, preUsage.memoryUsage);
 
-	if(stDiff.cpuUsage < 0)	cpuSign = -1;
-	if(stDiff.threadUsage < 0)	threadSign = -1;
-	if(stDiff.memoryUsage < 0)	memorySign = -1;
+	//if(stDiff.cpuUsage < 0)	cpuSign = -1;
+	//if(stDiff.threadUsage < 0)	threadSign = -1;
+	//if(stDiff.memoryUsage < 0)	memorySign = -1;
 
 /*
 	for (i = 0; i < SCORE_POINT_NUM-1; i++)
@@ -316,6 +362,7 @@ SCORE_RESULT_T calcResourceScore(RESOURCE_USAGE_T *stUsage)
  			memoryScore = astMemoryScore[i].score;
 	}
 */
+/*
 	i = SCORE_POINT_NUM-1;
 	while (i >= 0)
 	{
@@ -351,11 +398,51 @@ SCORE_RESULT_T calcResourceScore(RESOURCE_USAGE_T *stUsage)
 			i--;
 		}
 	}
+	*/
+
+		i = 0;
+	while (i < FREQ_SCORE_POINT_NUM)
+	{
+		if( stUsage->cpuFreq == astCpuScore[i].cpuFreq){
+ 			cpuFreqScore = astCpuScore[i].score;
+			cpuScore = cpuFreqScore - stUsage->cpuUsage;
+			break;
+		}
+		else{
+			i++;
+		}
+	}
+
+	i = 0;
+	while (i < THREAD_SCORE_POINT_NUM)
+	{
+		if( stUsage->threadUsage == astThreadScore[i].threadNum){
+ 			threadScore = cpuFreqScore - astThreadScore[i].score;
+			break;
+		}
+		else{
+			i++;
+		}
+	}
+	
+	i = 0;
+	while (i < MEM_SCORE_POINT_NUM)
+	{
+		if( diff_memoryUsage*10 <= astMemoryScore[i].diffUsage){
+ 			memoryScore = astMemoryScore[i].score /10;
+			break;
+		}
+		else{
+			i++;
+		}
+	}
+	
 	
 	scoreResult = cpuScore*cpuSign + threadScore*threadSign + memoryScore*memorySign;
-	memmove(pScore+1, pScore, sizeof(int) * (AVG_SCORE-1));
-	*pScore = scoreResult;
+	//memmove(pScore+1, pScore, sizeof(int) * (AVG_SCORE-1));
+	//*pScore = scoreResult;
 
+	/*
 	for (i = 0; i < AVG_SCORE; i++)
 	{
 		scoreSum += *(pScore+i);
@@ -366,8 +453,13 @@ SCORE_RESULT_T calcResourceScore(RESOURCE_USAGE_T *stUsage)
 	}
 
 	avgScoreResult = (float)scoreSum/AVG_SCORE;	
-	printf("Score CPU=%d, Thread=%d, Mem=%d, sum=%d, avg=%.2f\n\n", 
-		cpuScore*cpuSign, threadScore*threadSign, memoryScore*memorySign, scoreResult, avgScoreResult);
+	*/
+	
+	//printf("Score CPU=%d, Thread=%d, Mem=%d, sum=%d, avg=%.2f\n\n", 
+		//cpuScore*cpuSign, threadScore*threadSign, memoryScore*memorySign, scoreResult, avgScoreResult);
+
+		printf("Score Freq = %d CPU=%d, Thread=%d, Mem=%d, sum=%d, \n\n", 
+		cpuFreqScore, cpuScore, threadScore, memoryScore, scoreResult);
 
 /*
 	for (i = 0; i < AVG_SCORE; i++)
@@ -377,6 +469,30 @@ SCORE_RESULT_T calcResourceScore(RESOURCE_USAGE_T *stUsage)
 */
 	stResult.score = scoreResult;
 	stResult.avgScore = avgScoreResult;
+
+	if (stResult.score > plusThreshold){
+
+			minusContinueCount = 0;
+			if ( plusContinueCount > continueThreshold)
+				stResult.finalDecision = 1;
+			else 
+				plusContinueCount++;
+			
+			}
+	else if (stResult.score < minusThreshold){
+
+			plusContinueCount = 0;
+			if ( minusContinueCount > continueThreshold)
+				stResult.finalDecision = -1;
+			else 
+				minusContinueCount++;
+			
+			}
+	else	{
+			plusContinueCount = 0;
+			minusContinueCount = 0;
+			stResult.finalDecision = 0;
+		}
 
 	return stResult;
 
@@ -389,9 +505,9 @@ RESOURCE_USAGE_T calcDiff(RESOURCE_USAGE_T * stPre, RESOURCE_USAGE_T * stCur)
 	stDiff.threadUsage = stCur->threadUsage - stPre->threadUsage;
 	stDiff.memoryUsage = stCur->memoryUsage - stPre->memoryUsage;
 
-	printf("curCPU=%4.2f, curThread=%d, curMem=%4.2f\n", stCur->cpuUsage, stCur->threadUsage, stCur->memoryUsage);
-	printf("preCPU=%4.2f, preThread=%d, preMem=%4.2f\n", stPre->cpuUsage, stPre->threadUsage, stPre->memoryUsage);
-	printf("diffCPU=%4.2f, diffThread=%d, diffMem=%4.2f\n", stDiff.cpuUsage, stDiff.threadUsage, stDiff.memoryUsage);
+	printf("curCPU=%d, curThread=%d, curMem=%4.2f\n", stCur->cpuUsage, stCur->threadUsage, stCur->memoryUsage);
+	//printf("preCPU=%d, preThread=%d, preMem=%4.2f\n", stPre->cpuUsage, stPre->threadUsage, stPre->memoryUsage);
+	//printf("diffCPU=%d, diffThread=%d, diffMem=%4.2f\n", stDiff.cpuUsage, stDiff.threadUsage, stDiff.memoryUsage);
 
 	
 	return stDiff;
