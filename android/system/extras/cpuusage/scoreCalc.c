@@ -90,6 +90,7 @@ int minusThreshold;
 int continueThreshold;
 int plusContinueCount = 0;
 int minusContinueCount = 0;
+int pseONOFF = 0;
 int aScoreResult[AVG_SCORE] = {};
 
 RESOURCE_USAGE_T calcDiff(RESOURCE_USAGE_T * stPre, RESOURCE_USAGE_T * stCur);
@@ -190,6 +191,23 @@ int tableFilesCheck(void){
 			//else
 			//	fprintf(fp, "%d", initTune[i]);
 			}
+		}
+		if ( 0 == access("/data/cpulog/pseON.txt", F_OK)){
+		printf( "%s file already exists.\n", "tune.txt");
+		}
+	
+	else{
+	
+		//If there is no data text file, the file will be generated with initial value.
+		fp = fopen( file_name[i], "wt");
+
+		fp = fopen( "/data/cpulog/pseON.txt", "wt");
+		if(fp == NULL){
+				printf("fopen w error\n");
+				return 0;
+				}
+
+				fprintf(fp, "%d\n", 1);
 		}
 
 	return 0;
@@ -309,6 +327,19 @@ int loadUsageScoreValue(void){
 	fscanf(fp, "%d", &continueThreshold);
 					
 	fclose(fp);
+	//pseON.txt file has Tune value data.
+	// pseON value 1 is PSE & FCB is ON
+	// pseON value 0 is PSE & FCB is OFF
+	fp = fopen("/data/cpulog/pseON.txt", "rt");
+	if(fp == NULL){
+		printf("fopen open error\n");
+		return 0;
+		}
+	
+	fscanf(fp, "%d", &pseONOFF);
+					
+	fclose(fp);
+
 	
 
 	return 0;
@@ -474,11 +505,12 @@ SCORE_RESULT_T calcResourceScore(RESOURCE_USAGE_T *stUsage)
 	if (stResult.score > plusThreshold){
 
 			minusContinueCount = 0;
-			if ( plusContinueCount > continueThreshold)
+			if ( plusContinueCount >= continueThreshold)
 			{
 				stResult.finalDecision = 1;
 				//set_cpufreq_to_min();
-				set_cpufreq_to_prev_step();
+				if (pseONOFF == 1) //pseONOFF value can be read from pseON.txt default 1
+					set_cpufreq_to_prev_step();
 			}
 			else 
 				plusContinueCount++;
@@ -491,17 +523,27 @@ SCORE_RESULT_T calcResourceScore(RESOURCE_USAGE_T *stUsage)
 			{
 				stResult.finalDecision = -1;
 				//set_cpufreq_to_max();
-				set_cpufreq_to_next_step();
+				if (pseONOFF == 1)
+					set_cpufreq_to_next_step();
 			}
 			else 
 				minusContinueCount++;
 			
 			}
 	else	{
+			if( (plusContinueCount != 0) || (minusContinueCount !=0)){
 			plusContinueCount = 0;
 			minusContinueCount = 0;
+			stResult.finalDecision = 2;
+
+			if (pseONOFF == 1){
+				printf("Come back to ONDEMAND \n");
+				set_scaling_governor(G_ONDEMAND);
+				}
+		
+				}
+			else
 			stResult.finalDecision = 0;
-			//set_scaling_governor(G_ONDEMAND);
 		}
 
 	return stResult;
