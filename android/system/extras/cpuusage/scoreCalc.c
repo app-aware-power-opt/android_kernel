@@ -12,6 +12,8 @@
 #define THREAD_SCORE_POINT_NUM 20
 #define AVG_SCORE 3
 
+int calcTargetFreq(int score);
+
 typedef struct {
 	int cpuFreq;
 	int score;
@@ -359,7 +361,7 @@ SCORE_RESULT_T calcResourceScore(RESOURCE_USAGE_T *stUsage)
 	int i = 0, cpuSign = 1, threadSign = 1, memorySign = 1;
 	float diff_memoryUsage;
 	RESOURCE_USAGE_T stDiff;
-	SCORE_RESULT_T stResult = {};
+	SCORE_RESULT_T stResult = {0, };
 
 	static int * pScore = NULL;
 	static int fInitlBuffer = 1;
@@ -510,7 +512,8 @@ SCORE_RESULT_T calcResourceScore(RESOURCE_USAGE_T *stUsage)
 				stResult.finalDecision = 1;
 				//set_cpufreq_to_min();
 				if (pseONOFF == 1) //pseONOFF value can be read from pseON.txt default 1
-					set_cpufreq_to_prev_step();
+					//set_cpufreq_to_prev_step();
+					stResult.targetFreq = calcTargetFreq(stResult.score);
 			}
 			else 
 				plusContinueCount++;
@@ -525,7 +528,8 @@ SCORE_RESULT_T calcResourceScore(RESOURCE_USAGE_T *stUsage)
 				stResult.finalDecision = -1;
 				//set_cpufreq_to_max();
 				if (pseONOFF == 1)
-					set_cpufreq_to_next_step();
+					//set_cpufreq_to_next_step();
+					stResult.targetFreq = calcTargetFreq(stResult.score);
 			}
 			else 
 				minusContinueCount++;
@@ -549,7 +553,7 @@ SCORE_RESULT_T calcResourceScore(RESOURCE_USAGE_T *stUsage)
 
 				if (pseONOFF == 1){
 					printf("Come back to ONDEMAND \n");
-					set_scaling_governor(G_ONDEMAND);
+					//set_scaling_governor(G_ONDEMAND);
 					}
 									
 				}
@@ -576,4 +580,24 @@ RESOURCE_USAGE_T calcDiff(RESOURCE_USAGE_T * stPre, RESOURCE_USAGE_T * stCur)
 	
 	return stDiff;
 };
+
+
+int calcTargetFreq(int score)
+{
+	int curFreq = 0;
+	int variationFreq = 0;
+	int targetFreq = 0;
+
+	curFreq = read_scaling_cur_freq();
+	variationFreq = ((float)score/210) * curFreq;
+	targetFreq = curFreq -variationFreq;
+	
+	set_cpufreq_to_value(targetFreq);
+
+	printf("===> [curFreq=%d], [variationFreq=%d], [targetFreq=%d]\n", curFreq, variationFreq, targetFreq);
+	printf("=====================================\n");
+
+	return targetFreq;
+
+}
 

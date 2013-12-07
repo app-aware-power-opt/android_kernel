@@ -10,6 +10,7 @@ typedef struct {
 	int score;
 	float avgScore;
 	int finalDecision;
+	int targetFreq;
 }SCORE_RESULT_T;
 
 SCORE_RESULT_T calcResourceScore(RESOURCE_USAGE_T *stUsage);

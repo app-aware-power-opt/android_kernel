@@ -380,8 +380,8 @@ float get_mem_info(void)
                 "", (float)total_vss*100/total_mem, (float)total_rss*100/total_mem, (float)total_pss*100/total_mem, (float)total_uss*100/total_mem, "RAM TOTAL", total_mem);
     }
 
-    printf("%5s  RAM: %ldK total, %ldK free, %ldK buffers, %ldK cached\n\n",
-            "", mem[0], mem[1], mem[2], mem[3]);
+    //printf("%5s  RAM: %ldK total, %ldK free, %ldK buffers, %ldK cached\n\n",
+    //        "", mem[0], mem[1], mem[2], mem[3]);
 
     memset(meminfo, 0, sizeof(meminfo));
     meminfo[0] = (float)total_mem; /*TOTAL*/
