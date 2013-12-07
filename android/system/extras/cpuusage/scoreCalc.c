@@ -514,11 +514,12 @@ SCORE_RESULT_T calcResourceScore(RESOURCE_USAGE_T *stUsage)
 			}
 			else 
 				plusContinueCount++;
-			
 			}
+	
 	else if (stResult.score < minusThreshold){
 
 			plusContinueCount = 0;
+			
 			if ( minusContinueCount > continueThreshold)
 			{
 				stResult.finalDecision = -1;
@@ -530,20 +531,31 @@ SCORE_RESULT_T calcResourceScore(RESOURCE_USAGE_T *stUsage)
 				minusContinueCount++;
 			
 			}
-	else	{
+	
+	else{
 			if( (plusContinueCount != 0) || (minusContinueCount !=0)){
-			plusContinueCount = 0;
-			minusContinueCount = 0;
-			stResult.finalDecision = 2;
 
-			if (pseONOFF == 1){
-				printf("Come back to ONDEMAND \n");
-				set_scaling_governor(G_ONDEMAND);
+				if (plusContinueCount > 0){
+						plusContinueCount = 0;
+						stResult.finalDecision = 2;
+					}
+				else if (minusContinueCount > 0){
+						minusContinueCount = 0;
+						stResult.finalDecision = -2;
+					}
+				else
+						stResult.finalDecision = 0;
+
+
+				if (pseONOFF == 1){
+					printf("Come back to ONDEMAND \n");
+					set_scaling_governor(G_ONDEMAND);
+					}
+									
 				}
-		
-				}
+			
 			else
-			stResult.finalDecision = 0;
+				stResult.finalDecision = 0;
 		}
 
 	return stResult;
