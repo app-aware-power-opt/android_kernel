@@ -349,6 +349,292 @@ int loadUsageScoreValue(void){
 
 }
 
+
+#define CPUUSAGE_UP_THRESHOLD 20
+#define CPUUSAGE_MIN_UP_THRESHOLD 50
+#define CPUUSAGE_MIN_DOWN_THRESHOLD 30
+#define CPUUSAGE_DOWN_THRESHOLD -20
+#define CPUUSAGE_DOWN_THRESHOLD_LIMIT 30
+
+int getCPUFreqIndexFromTbl(int freq)
+{
+	int i = 0;
+	while (i < FREQ_SCORE_POINT_NUM)
+	{
+		if(freq == astCpuScore[i].cpuFreq){
+			break;
+		}
+		else{
+			i++;
+		}
+	}
+
+	return i;
+}
+
+int getCPUFreqFromTbl(int index)
+{
+	return astCpuScore[index].cpuFreq;
+}
+
+unsigned int checkCPUUsageCond(int cpuUsage, int cpuFreq, RESOURCE_USAGE_T stDiff)
+{
+	unsigned int freq = 0;
+	int freqindex = -1, nextfreqindex = -1;
+	float freqadj = 0;
+	static int maxfreqindex = -1, minfreqindex = -1;
+
+	if(maxfreqindex == -1)
+		maxfreqindex = getCPUFreqIndexFromTbl(CPUFREQ_MAX/1000);
+	if(minfreqindex == -1)
+		minfreqindex = getCPUFreqIndexFromTbl(CPUFREQ_MIN/1000);
+
+	if(stDiff.cpuUsage >= CPUUSAGE_UP_THRESHOLD)
+	{
+		// if the usage is over up threshold, scale up the freq
+		freqindex = getCPUFreqIndexFromTbl(cpuFreq);
+		freqadj = (maxfreqindex - freqindex +1)*((float)cpuUsage/100) + (freqindex - 1);
+		if((int)freqadj < freqindex)
+		{
+			freqadj = freqindex;
+		}
+		else if((int)freqadj == freqindex)
+		{
+			if((int)freqadj < maxfreqindex)
+			{
+				freqadj = freqadj + 1;
+			}
+		}
+				
+		nextfreqindex = (int)freqadj;
+		
+		freq = getCPUFreqFromTbl(nextfreqindex)*1000;
+		printf("CPU Usage : %d(%d), need to scale up from %d to %d\n", cpuUsage, stDiff.cpuUsage, cpuFreq, freq/1000);
+	}
+	else if((stDiff.cpuUsage <= CPUUSAGE_DOWN_THRESHOLD) && (cpuUsage <= CPUUSAGE_DOWN_THRESHOLD_LIMIT))
+	{
+		// if the usage is under down threshold, scale down the freq
+		freqindex = getCPUFreqIndexFromTbl(cpuFreq);
+		freqadj = (freqindex - minfreqindex +1)*((float)cpuUsage/100);
+		//freqadj = (maxfreqindex - minfreqindex +1)*((float)cpuUsage/100);
+		if(freqadj <= minfreqindex)
+			freqadj = minfreqindex;
+		nextfreqindex = (int)freqadj;
+		
+		freq = getCPUFreqFromTbl(nextfreqindex)*1000;
+		printf("CPU Usage : %d(%d), need to scale down from %d to %d\n", cpuUsage, stDiff.cpuUsage, cpuFreq, freq/1000);
+	}
+	else if(cpuUsage < CPUUSAGE_MIN_DOWN_THRESHOLD)
+	{
+		// if the usage is below minimum down threshold, step down
+		if(cpuFreq == (CPUFREQ_MIN/1000))
+		{
+			freq = 0;
+			printf("CPU Usage : %d, need to step down but freq is already min %d\n", cpuUsage, cpuFreq);
+		}
+		else
+		{
+			freq = get_prev_freq((unsigned int)cpuFreq*1000);
+			printf("CPU Usage : %d, need to step down from %d to %d\n", cpuUsage, cpuFreq, freq/1000);
+		}
+	}
+	else if(cpuUsage > CPUUSAGE_MIN_UP_THRESHOLD)
+	{
+		// if the usage is over minimum up threshold, step up
+		if(cpuFreq == (CPUFREQ_MAX/1000))
+		{
+			freq = 0;
+			printf("CPU Usage : %d, need to step up but freq is already max %d\n", cpuUsage, cpuFreq);
+		}
+		else
+		{
+			freq = get_next_freq((unsigned int)cpuFreq*1000);
+			printf("CPU Usage : %d, need to step up from %d to %d\n", cpuUsage, cpuFreq, freq/1000);
+		}
+	}
+	else
+	{
+		freq = 0;
+	}
+
+	return freq;
+}
+
+
+#define THREAD_UP_THRESHOLD 2
+#define THREAD_DOWN_THRESHOLD -2
+
+int checkThreadCond(RESOURCE_USAGE_T stDiff)
+{
+	int threadcond = 0;
+	
+	if(stDiff.threadUsage >= THREAD_UP_THRESHOLD)
+	{
+		threadcond = 1;
+	}
+	else if(stDiff.threadUsage <= THREAD_DOWN_THRESHOLD)
+	{
+		threadcond = -1;
+	}
+	else
+	{
+		threadcond = 0;
+	}
+
+	return threadcond;
+}
+
+#define MEM_UP_THRESHOLD 0.2
+#define MEM_DOWN_THRESHOLD -0.2
+
+int checkMemCond(RESOURCE_USAGE_T stDiff)
+{
+	int memcond = 0;
+	
+	if(stDiff.memoryUsage >= MEM_UP_THRESHOLD)
+	{
+		memcond = 1;
+	}
+	else if(stDiff.memoryUsage <= MEM_DOWN_THRESHOLD)
+	{
+		memcond = -1;
+	}
+	else
+	{
+		memcond = 0;
+	}
+
+	return memcond;
+}
+
+/*
+ * result
+ *  1 : step up from the current frequency
+ * -1 : step down from the current frequency
+ *  2 : scale up from the given frequency
+ * -2 : scale down from the given frequency
+ *  3 : set to the given frequency
+ *  0 : no need to change
+ */
+
+#define ADJ_NO_NEED 0
+#define ADJ_STEP_UP 1
+#define ADJ_STEP_DOWN -1
+#define ADJ_SCALE_UP 2
+#define ADJ_SCALE_DOWN -2
+#define ADJ_FREQ_ONLY 3
+
+int adjustCond(int cpuFreq, unsigned int *freq, int threadcond, int memcond)
+{
+	int condpoint = 0;
+	unsigned int adjfreq = 0;
+	int result = ADJ_NO_NEED;
+
+	condpoint = threadcond + memcond;
+
+	if((*freq) == 0)
+	{
+		if(condpoint > 0)
+		{
+			if(cpuFreq*1000 == CPUFREQ_MAX)
+			{
+				result = ADJ_NO_NEED; // no need to change
+				printf("freq %d is max, no need to step up\n", cpuFreq);
+			}
+			else
+			{
+				adjfreq = (unsigned int)cpuFreq*1000;
+				while(condpoint > 0)
+				{
+					adjfreq = get_next_freq(adjfreq);
+					condpoint--;
+				}
+				*freq = adjfreq;
+				printf("step up from %d to %d\n", cpuFreq, (*freq)/1000);
+				result = ADJ_STEP_UP; // step up
+			}
+			
+		}
+		else if(condpoint < 0)
+		{
+			if(cpuFreq*1000  == CPUFREQ_MIN)
+			{
+				result = ADJ_NO_NEED; // no need to change
+				printf("freq %d is min, no need to step down\n", cpuFreq);
+			}
+			else
+			{
+				adjfreq = (unsigned int)cpuFreq*1000;
+				while(condpoint < 0)
+				{
+					adjfreq = get_prev_freq(adjfreq);
+					condpoint++;
+				}
+				*freq = adjfreq;
+				printf("step down from %d to %d\n", cpuFreq, (*freq)/1000);
+				result = ADJ_STEP_DOWN; // step down
+			}
+		}
+		else
+		{
+			result = ADJ_NO_NEED; // no need to change
+		}
+	}
+	else
+	{
+		if(condpoint > 0)
+		{
+			if(*freq == CPUFREQ_MAX)
+			{
+				result = ADJ_NO_NEED; // no need to change
+				printf("freq %d is max, no need to scale up\n", *freq);
+			}
+			else
+			{
+				adjfreq = *freq;
+				//printf("scale up adjfreq start %d\n", adjfreq);
+				while(condpoint > 0)
+				{
+					adjfreq = get_next_freq(adjfreq);
+					condpoint--;
+					//printf("scale up adjfreq %d\n", adjfreq);
+				}
+				//printf("scale up from %d to %d\n", (*freq)/1000, adjfreq/1000);
+				*freq = adjfreq;
+				result = ADJ_SCALE_UP; // scale up
+			}
+		}
+		else if(condpoint < 0)
+		{
+			if(*freq  == CPUFREQ_MIN)
+			{
+				result = ADJ_NO_NEED; // no need to change
+				printf("freq %d is min, no need to scale down\n", *freq);
+			}
+			else
+			{
+				adjfreq = *freq;
+				//printf("scale down adjfreq start %d\n", adjfreq);
+				while(condpoint < 0)
+				{
+					adjfreq = get_prev_freq(adjfreq);
+					condpoint++;
+					//printf("scale down adjfreq %d\n", adjfreq);
+				}
+				//printf("scale down from %d to %d\n", (*freq)/1000, adjfreq/1000);
+				*freq = adjfreq;
+				result = ADJ_SCALE_DOWN; // scale down
+			}
+		}
+		else
+		{
+			result = ADJ_FREQ_ONLY; // no need to step up or down, use the given frequency
+		}
+	}
+
+	return result;
+}
+
 SCORE_RESULT_T calcResourceScore(RESOURCE_USAGE_T *stUsage)
 {
 	int scoreResult = 0;
@@ -365,6 +651,11 @@ SCORE_RESULT_T calcResourceScore(RESOURCE_USAGE_T *stUsage)
 
 	static int * pScore = NULL;
 	static int fInitlBuffer = 1;
+	static int cpufreq_changed = 0;
+
+	unsigned int freq = 0;
+	int threadcond = 0, memcond = 0, adjcond = 0;
+
 	
 	//TO DO : buffer free
 	if(fInitlBuffer)
@@ -504,6 +795,43 @@ SCORE_RESULT_T calcResourceScore(RESOURCE_USAGE_T *stUsage)
 	stResult.score = scoreResult;
 	stResult.avgScore = avgScoreResult;
 
+
+	freq = checkCPUUsageCond(stUsage->cpuUsage, stUsage->cpuFreq, stDiff);
+	if(freq != 0)
+		printf("freq need to be changed from %d to %d\n", stUsage->cpuFreq, freq/1000);
+
+	threadcond = checkThreadCond(stDiff);
+	memcond = checkMemCond(stDiff);
+
+	// if frequency is needed to be changed, do overweight only in case the direction is same
+	if(freq != 0)
+	{
+		if((stDiff.cpuUsage < 0) && (threadcond + memcond < 0))
+		{
+			adjcond = adjustCond(stUsage->cpuFreq, &freq, threadcond, memcond);
+		}
+		else if((stDiff.cpuUsage > 0) && (threadcond + memcond > 0))
+		{
+			adjcond = adjustCond(stUsage->cpuFreq, &freq, threadcond, memcond);
+		}
+		else
+		{
+			adjcond = ADJ_FREQ_ONLY;
+		}
+	}
+	else
+	{
+		adjcond = adjustCond(stUsage->cpuFreq, &freq, threadcond, memcond);
+	}
+
+	if((pseONOFF == 1) && (adjcond != 0))
+	{
+		printf("[DBG ADDJUST] Cur : %d, Next : %d, CPU usage : %d(%d), T : %d, M : %d, A: %d\n", stUsage->cpuFreq, freq/1000, stUsage->cpuUsage, stDiff.cpuUsage, threadcond, memcond, adjcond);
+		set_cpufreq_to_value(freq);
+	}
+	stResult.finalDecision = adjcond;
+
+	/*	
 	if (stResult.score > plusThreshold){
 
 			minusContinueCount = 0;
@@ -561,6 +889,7 @@ SCORE_RESULT_T calcResourceScore(RESOURCE_USAGE_T *stUsage)
 			else
 				stResult.finalDecision = 0;
 		}
+		*/
 
 	return stResult;
 
