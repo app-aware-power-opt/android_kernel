@@ -532,7 +532,7 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 			this_dbs_info->rate_mult =
 				dbs_tuners_ins.sampling_down_factor;
 #ifdef CONFIG_CPU_FREQ_DBG
-		pr_info("[DBG UP to MAX] avg_freq : %d, load_freq : %d, load : %d, cur_freq : %d, up_t_freq: %d, up_t : %d\n", freq_avg, max_load_freq, max_load_freq/freq_avg, policy->cur, dbs_tuners_ins.up_threshold * policy->cur, dbs_tuners_ins.up_threshold);
+		pr_info("[DBG UP to MAX][%d] avg_freq : %d, load_freq : %d, load : %d, cur_freq : %d, up_t_freq: %d, up_t : %d\n", policy->cpu, freq_avg, max_load_freq, max_load_freq/freq_avg, policy->cur, dbs_tuners_ins.up_threshold * policy->cur, dbs_tuners_ins.up_threshold);
 #endif
 		dbs_freq_increase(policy, policy->max);
 		return;
@@ -566,7 +566,7 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 
 #ifdef CONFIG_CPU_FREQ_DBG
 		if(policy->cur != policy->min)
-			pr_info("[DBG DOWN] avg_freq : %d, load_freq : %d,  load : %d, cur_freq : %d, down_t_freq: %d, down_t : %d, next_freq : %d\n", freq_avg, max_load_freq, max_load_freq/freq_avg, policy->cur, (dbs_tuners_ins.up_threshold - dbs_tuners_ins.down_differential)*policy->cur, dbs_tuners_ins.up_threshold - dbs_tuners_ins.down_differential, freq_next);
+			pr_info("[DBG DOWN] [%d] avg_freq : %d, load_freq : %d,  load : %d, cur_freq : %d, down_t_freq: %d, down_t : %d, next_freq : %d\n", policy->cpu, freq_avg, max_load_freq, max_load_freq/freq_avg, policy->cur, (dbs_tuners_ins.up_threshold - dbs_tuners_ins.down_differential)*policy->cur, dbs_tuners_ins.up_threshold - dbs_tuners_ins.down_differential, freq_next);
 #endif
 
 		if (!dbs_tuners_ins.powersave_bias) {

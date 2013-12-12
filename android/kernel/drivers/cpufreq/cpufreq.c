@@ -450,6 +450,10 @@ static ssize_t store_scaling_governor(struct cpufreq_policy *policy,
 						&new_policy.governor))
 		return -EINVAL;
 
+#ifdef CONFIG_CPU_FREQ_DBG
+	pr_info("[DBG] %s : %s\n", __func__, str_governor);
+#endif
+
 	/* Do not use cpufreq_set_policy here or the user_policy.max
 	   will be wrongly overridden */
 	ret = __cpufreq_set_policy(policy, &new_policy);
