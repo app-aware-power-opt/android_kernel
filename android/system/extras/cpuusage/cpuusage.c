@@ -23,6 +23,8 @@
 #include "cpuinfo.h"
 #include "meminfo.h"
 
+#include "cpufreq.h"
+
 #define INTERVAL 2      /* 5 secs */
 #define SCORECALC
  
@@ -120,6 +122,8 @@ int main(int argc, char* argv[])
     int logInterval = 0;
     int logTime = 0;
 
+    int l_pseONOFF = 0;
+
 #ifdef PROC_MEM
     float mem_portion = 0;
 #endif
@@ -145,7 +149,24 @@ int main(int argc, char* argv[])
 		
     time(&old);
 	read_proc_stat(&stPreCpuUsage);
+
+    ofp = fopen("/data/cpulog/pseON.txt", "rt");
+    if(ofp == NULL){
+        printf("fopen open error\n");
+        return 0;
+    }
 	
+    fscanf(ofp, "%d", &l_pseONOFF);
+					
+    fclose(ofp);
+    ofp = NULL;
+	
+    if((l_pseONOFF == 1)&&(read_scaling_governor() != G_USERSPACE))
+    {
+        printf("Change to USERSPACE \n");
+        set_scaling_governor(G_USERSPACE);
+    }
+		
     while(1)
     {
         time(&new);
@@ -235,7 +256,7 @@ int main(int argc, char* argv[])
 #endif
             }
 			
-#if defined(CPU_THREAD) && defined(CPU_FREQ)
+#if defined(CPU_THREAD) && defined(CPU_FREQ) && defined(PROC_MEM)
             printf("%6.2fs,%4llu.%02llu, %7d,%7d, %7d, %7d, %7d, %4.2f \n",
                     (double)timeStamp/CLOCKS_PER_SEC,
                     usage100/100, usage100%100,
@@ -355,6 +376,13 @@ int main(int argc, char* argv[])
         else
         {
             printf("cpu usage logging finished\n");
+
+		if(read_scaling_governor() != G_ONDEMAND)
+		{
+			printf("Come back to ONDEMAND \n");
+			set_scaling_governor(G_ONDEMAND);
+		}
+			
             return 0;
         }
     }

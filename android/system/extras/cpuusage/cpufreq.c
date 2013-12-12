@@ -123,6 +123,8 @@ void set_scaling_governor(unsigned int scaling_governor)
     }
 
     fclose(fp);
+
+    usleep(100000); // prevent too often modification
 }
 
 
@@ -130,6 +132,8 @@ void set_cpufreq_to_max(void)
 {
     FILE *fp;
     int ret;
+
+    /*
     cpufreq_governor_t cur_governor;
 
     cur_governor = read_scaling_governor();
@@ -138,7 +142,8 @@ void set_cpufreq_to_max(void)
         fprintf(stderr, "current governor is : %d, change to userspace(%d)\n", cur_governor, G_USERSPACE);
         set_scaling_governor(G_USERSPACE);
     }
-
+    */
+    
     fp = fopen("/sys/devices/system/cpu/cpu0/cpufreq/scaling_setspeed", "w");
     if(fp == NULL)
     {
@@ -161,6 +166,7 @@ void set_cpufreq_to_min(void)
 {
     FILE *fp;
     int ret;
+    /*
     cpufreq_governor_t cur_governor;
 
     cur_governor = read_scaling_governor();
@@ -169,7 +175,8 @@ void set_cpufreq_to_min(void)
         fprintf(stderr, "current governor is : %d, change to userspace(%d)\n", cur_governor, G_USERSPACE);
         set_scaling_governor(G_USERSPACE);
     }
-
+    */
+    
     fp = fopen("/sys/devices/system/cpu/cpu0/cpufreq/scaling_setspeed", "w");
     if(fp == NULL)
     {
@@ -192,6 +199,8 @@ void set_cpufreq_to_value(unsigned int freq)
 {
     FILE *fp;
     int ret;
+
+    /*
     cpufreq_governor_t cur_governor;
 
     cur_governor = read_scaling_governor();
@@ -200,7 +209,8 @@ void set_cpufreq_to_value(unsigned int freq)
         fprintf(stderr, "current governor is : %d, change to userspace(%d)\n", cur_governor, G_USERSPACE);
         set_scaling_governor(G_USERSPACE);
     }
-
+    */
+    
     fp = fopen("/sys/devices/system/cpu/cpu0/cpufreq/scaling_setspeed", "w");
     if(fp == NULL)
     {
@@ -266,13 +276,16 @@ unsigned int get_next_freq(unsigned int cur_freq)
         next_freq = exynos4412_cpufreq_table[i-1];
     }
 
+    //printf("%s : cur : %d, next : %d, index : %d\n", __func__, cur_freq, next_freq, i);
+	
     return next_freq;
 }
 
 void set_cpufreq_to_next_step(void)
 {
-    cpufreq_governor_t cur_governor;
     unsigned int cur_freq, next_freq;
+    /*
+    cpufreq_governor_t cur_governor;
 
     cur_governor = read_scaling_governor();
     if(cur_governor != G_USERSPACE)
@@ -280,6 +293,7 @@ void set_cpufreq_to_next_step(void)
         fprintf(stderr, "current governor is : %d, change to userspace(%d)\n", cur_governor, G_USERSPACE);
         set_scaling_governor(G_USERSPACE);
     }
+    */
 
     cur_freq = read_scaling_cur_freq();
     if(cur_freq == CPUFREQ_MAX)
@@ -315,13 +329,16 @@ unsigned int get_prev_freq(unsigned int cur_freq)
         prev_freq = exynos4412_cpufreq_table[i+1];
     }
 
+    //printf("%s : cur : %d, prev : %d, index : %d\n", __func__, cur_freq, prev_freq, i);
+
     return prev_freq;
 }
 
 void set_cpufreq_to_prev_step(void)
 {
-    cpufreq_governor_t cur_governor;
     unsigned int cur_freq, prev_freq;
+    /*
+    cpufreq_governor_t cur_governor;
 
     cur_governor = read_scaling_governor();
     if(cur_governor != G_USERSPACE)
@@ -329,6 +346,7 @@ void set_cpufreq_to_prev_step(void)
         fprintf(stderr, "current governor is : %d, change to userspace(%d)\n", cur_governor, G_USERSPACE);
         set_scaling_governor(G_USERSPACE);
     }
+    */
 
     cur_freq = read_scaling_cur_freq();
     if(cur_freq == CPUFREQ_MIN)
