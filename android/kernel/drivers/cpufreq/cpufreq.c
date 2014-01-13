@@ -32,6 +32,13 @@
 
 #include <trace/events/power.h>
 
+#ifdef CONFIG_CPU_FREQ_DBG
+#include <linux/fs.h>
+#include <asm/segment.h>
+#include <asm/uaccess.h>
+#include <linux/buffer_head.h>
+#endif
+
 /**
  * The "cpufreq driver" - the arch- or hardware-dependent low
  * level driver of CPUFreq support, and its spinlock. This lock
@@ -601,6 +608,112 @@ static ssize_t store_use_pss(struct cpufreq_policy *policy,
 
 	return use_pss_or_meminfo;
 }
+
+static struct delayed_work status_monitor_work;
+static unsigned int status_monitor_period = 0;
+int status_monitor_flag = 0;
+
+static struct file* status_monitor_filp = NULL;
+static mm_segment_t status_monitor_oldfs;
+static ssize_t status_monitor_offset = 0;
+
+int get_status_monitor_flag(void)
+{
+	return status_monitor_flag;
+}
+
+void set_status_monitor_flag(int flag)
+{
+	pr_info("%s : %d\n", __func__, flag);
+	status_monitor_flag = flag;
+}
+
+void status_monitor_write_file(unsigned char* data, unsigned int size)
+{
+	int ret;
+	int err = -1;
+
+	if(status_monitor_filp == NULL)
+	{
+		status_monitor_oldfs = get_fs();
+		set_fs(get_ds());
+		status_monitor_filp = filp_open("/data/cpulog/cpulog.txt", O_CREAT|O_TRUNC, S_IRWXUGO);
+		if(IS_ERR(status_monitor_filp)) {
+	       	err = PTR_ERR(status_monitor_filp);
+			pr_err("[DBG] file open failed err : %d\n", err);
+	       	return;
+		}
+	}
+
+	ret = vfs_write(status_monitor_filp, data, size, &status_monitor_offset);
+	status_monitor_offset += ret;
+	pr_info("%s offset : %ld\n", __func__, status_monitor_offset);
+
+}
+	
+static void status_monitor_timer(struct work_struct *work)
+{
+	cancel_delayed_work_sync(&status_monitor_work);
+	
+	set_status_monitor_flag(0);
+
+	pr_info("%s stop status monitor, flag : %d\n", __func__, get_status_monitor_flag());
+	
+	if(status_monitor_filp != NULL)
+	{
+		vfs_fsync(status_monitor_filp, 0);
+		set_fs(status_monitor_oldfs);
+		filp_close(status_monitor_filp, NULL);
+		status_monitor_filp = NULL;
+		status_monitor_offset = 0;
+	}
+
+}
+
+static ssize_t show_status_monitor(struct cpufreq_policy *policy, char *buf)
+{
+
+	return sprintf(buf, "Usage : echo # > status_monitor\nThis will monitor status for # seconds\n");
+}
+static ssize_t store_status_monitor(struct cpufreq_policy *policy,
+					const char *buf, size_t count)
+{
+	int ret;
+	int delay = 0;
+	int err = -1;
+	char file_buf[100];
+		
+	ret = sscanf(buf, "%d", &status_monitor_period);
+	if (ret != 1)
+		return -EINVAL;
+
+	pr_info("%s, %u sec is given\n", __func__, status_monitor_period);
+	status_monitor_period = status_monitor_period*1000*1000;
+	delay = usecs_to_jiffies(status_monitor_period);
+
+	status_monitor_oldfs = get_fs();
+	set_fs(get_ds());
+	status_monitor_filp = filp_open("/data/cpulog/cpulog.txt", O_CREAT|O_TRUNC, S_IRWXUGO);
+	if(IS_ERR(status_monitor_filp)) {
+		pr_err("[DBG] file open failed err : %d\n", err);
+       	err = PTR_ERR(status_monitor_filp);
+       	return err;
+	}
+
+	INIT_DELAYED_WORK_DEFERRABLE(&status_monitor_work, status_monitor_timer);
+	schedule_delayed_work_on(0, &status_monitor_work, delay);
+
+	pr_info("%s, %d sec is set, delay in jiffies : %d\n", __func__, status_monitor_period/1000/1000, delay);
+
+	memset(file_buf, 0, sizeof(file_buf));
+	sprintf(file_buf, "[%5.6s],[%5.5s],[%5.5s],[%5.5s],[%5.5s],[%5.5s]\n", "time", "cpu", "freq_avg", "freq_cur", "thread", "mem");
+	status_monitor_write_file(file_buf, sizeof(file_buf));
+	
+	set_status_monitor_flag(1);
+
+	return status_monitor_period;
+}
+
 #endif
 
 cpufreq_freq_attr_ro_perm(cpuinfo_cur_freq, 0400);
@@ -622,6 +735,7 @@ cpufreq_freq_attr_ro(run_thread);
 #endif
 #ifdef CONFIG_CPU_FREQ_DBG
 cpufreq_freq_attr_rw(use_pss);
+cpufreq_freq_attr_rw(status_monitor);
 #endif
 
 static struct attribute *default_attrs[] = {
@@ -641,6 +755,7 @@ static struct attribute *default_attrs[] = {
 #endif
 #ifdef CONFIG_CPU_FREQ_DBG
 	&use_pss.attr,
+	&status_monitor.attr,
 #endif
 	NULL
 };
@@ -1654,21 +1769,37 @@ static int __cpufreq_set_policy(struct cpufreq_policy *data,
 {
 	int ret = 0;
 
+#ifdef CONFIG_CPU_FREQ_DBG
+	pr_info("setting new policy for CPU %u: %u - %u kHz\n", policy->cpu,
+		policy->min, policy->max);
+#else
 	pr_debug("setting new policy for CPU %u: %u - %u kHz\n", policy->cpu,
 		policy->min, policy->max);
+#endif
 
 	memcpy(&policy->cpuinfo, &data->cpuinfo,
 				sizeof(struct cpufreq_cpuinfo));
 
 	if (policy->min > data->max || policy->max < data->min) {
+#ifdef CONFIG_CPU_FREQ_DBG
+		pr_info("[DBG] %s, min max check error!\n", __func__);
+#endif
 		ret = -EINVAL;
 		goto error_out;
 	}
 
 	/* verify the cpu speed can be set within this limit */
 	ret = cpufreq_driver->verify(policy);
+#ifdef CONFIG_CPU_FREQ_DBG
+	if (ret)
+	{
+		pr_info("[DBG] %s, verify error!\n", __func__);
+		goto error_out;
+	}
+#else
 	if (ret)
 		goto error_out;
+#endif
 
 	/* adjust if necessary - all reasons */
 	blocking_notifier_call_chain(&cpufreq_policy_notifier_list,
@@ -1681,8 +1812,16 @@ static int __cpufreq_set_policy(struct cpufreq_policy *data,
 	/* verify the cpu speed can be set within this limit,
 	   which might be different to the first one */
 	ret = cpufreq_driver->verify(policy);
+#ifdef CONFIG_CPU_FREQ_DBG
+	if (ret)
+	{
+		pr_info("[DBG] %s, verify 2nd error!\n", __func__);
+		goto error_out;
+	}
+#else
 	if (ret)
 		goto error_out;
+#endif
 
 	/* notification of the new policy */
 	blocking_notifier_call_chain(&cpufreq_policy_notifier_list,

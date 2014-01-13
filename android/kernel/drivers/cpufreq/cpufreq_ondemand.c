@@ -431,6 +431,16 @@ static void dbs_freq_increase(struct cpufreq_policy *p, unsigned int freq)
 			CPUFREQ_RELATION_L : CPUFREQ_RELATION_H);
 }
 
+#ifdef CONFIG_CPU_FREQ_DBG
+extern void status_monitor_write_file(unsigned char* data, unsigned int size);
+extern int get_mem_portion(void);
+extern int get_status_monitor_flag(void);
+
+#ifdef CONFIG_CPU_THREAD_NUM
+extern int run_thread_number;
+#endif
+#endif
+
 static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 {
 	unsigned int max_load_freq;
@@ -439,7 +449,15 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 	unsigned int j;
 #ifdef CONFIG_CPU_FREQ_DBG
 	int freq_avg;
+	int max_freq_avg;
+	unsigned int max_load;
+	char file_buf[100];
+	unsigned long long t;
+	unsigned long nanosec_rem;
+	int this_cpu;
+	int mem_portion = 0;
 #endif
+
 	this_dbs_info->freq_lo = 0;
 	policy = this_dbs_info->cur_policy;
 
@@ -454,6 +472,9 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 	 * Frequency reduction happens at minimum steps of
 	 * 5% (default) of current frequency
 	 */
+#ifdef CONFIG_CPU_FREQ_DBG
+	memset(file_buf, 0, sizeof(file_buf));
+#endif
 
 	/* Get Absolute Load - in terms of freq */
 	max_load_freq = 0;
@@ -521,9 +542,31 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 			freq_avg = policy->cur;
 
 		load_freq = load * freq_avg;
+#ifdef CONFIG_CPU_FREQ_DBG
+		if (load_freq > max_load_freq)
+		{
+			max_load_freq = load_freq;
+			max_freq_avg = freq_avg;
+			max_load = load;
+		}
+#else
 		if (load_freq > max_load_freq)
 			max_load_freq = load_freq;
+#endif
 	}
+
+#ifdef CONFIG_CPU_FREQ_DBG
+	if(get_status_monitor_flag() == 1)
+	{
+		this_cpu = smp_processor_id();
+		t = cpu_clock(this_cpu);
+		nanosec_rem = do_div(t, 1000000000);
+		mem_portion = get_mem_portion();
+		sprintf(file_buf, "%5lu.%06lu, %7u, %7d, %7u, %7d, %7d\n", (unsigned long) t, nanosec_rem / 1000, max_load, max_freq_avg, policy->cur, run_thread_number, mem_portion);
+pr_info("%s\n", file_buf);
+		status_monitor_write_file(file_buf, sizeof(file_buf));
+	}
+#endif
 
 	/* Check for frequency increase */
 	if (max_load_freq > dbs_tuners_ins.up_threshold * policy->cur) {
@@ -566,7 +609,9 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 
 #ifdef CONFIG_CPU_FREQ_DBG
 		if(policy->cur != policy->min)
+		{
 			pr_info("[DBG DOWN] [%d] avg_freq : %d, load_freq : %d,  load : %d, cur_freq : %d, down_t_freq: %d, down_t : %d, next_freq : %d\n", policy->cpu, freq_avg, max_load_freq, max_load_freq/freq_avg, policy->cur, (dbs_tuners_ins.up_threshold - dbs_tuners_ins.down_differential)*policy->cur, dbs_tuners_ins.up_threshold - dbs_tuners_ins.down_differential, freq_next);
+		}
 #endif
 
 		if (!dbs_tuners_ins.powersave_bias) {
@@ -625,6 +670,10 @@ static inline void dbs_timer_init(struct cpu_dbs_info_s *dbs_info)
 	/* We want all CPUs to do sampling nearly on same jiffy */
 	int delay = usecs_to_jiffies(dbs_tuners_ins.sampling_rate);
 
+#ifdef CONFIG_CPU_FREQ_DBG
+	pr_info("[DBG] %s\n", __func__);
+#endif
+
 	if (num_online_cpus() > 1)
 		delay -= jiffies % delay;
 
@@ -673,6 +722,9 @@ static int cpufreq_governor_dbs(struct cpufreq_policy *policy,
 
 	switch (event) {
 	case CPUFREQ_GOV_START:
+#ifdef CONFIG_CPU_FREQ_DBG
+		pr_info("[DBG] %s START, cpu : %d\n", __func__, cpu);
+#endif
 		if ((!cpu_online(cpu)) || (!policy->cur))
 			return -EINVAL;
 
@@ -700,7 +752,9 @@ static int cpufreq_governor_dbs(struct cpufreq_policy *policy,
 		 */
 		if (dbs_enable == 1) {
 			unsigned int latency;
-
+#ifdef CONFIG_CPU_FREQ_DBG
+			pr_info("[DBG] %s START, cpu : %d, create attr group\n", __func__, cpu);
+#endif
 			rc = sysfs_create_group(cpufreq_global_kobject,
 						&dbs_attr_group);
 			if (rc) {
@@ -727,6 +781,9 @@ static int cpufreq_governor_dbs(struct cpufreq_policy *policy,
 		break;
 
 	case CPUFREQ_GOV_STOP:
+#ifdef CONFIG_CPU_FREQ_DBG
+		pr_info("[DBG] %s STOP, cpu : %d\n", __func__, cpu);
+#endif
 		dbs_timer_exit(this_dbs_info);
 
 		mutex_lock(&dbs_mutex);
@@ -740,6 +797,9 @@ static int cpufreq_governor_dbs(struct cpufreq_policy *policy,
 		break;
 
 	case CPUFREQ_GOV_LIMITS:
+#ifdef CONFIG_CPU_FREQ_DBG
+		pr_info("[DBG] %s LIMITS, cpu : %d\n", __func__, cpu);
+#endif
 		mutex_lock(&this_dbs_info->timer_mutex);
 		if (policy->max < this_dbs_info->cur_policy->cur)
 			__cpufreq_driver_target(this_dbs_info->cur_policy,
@@ -758,6 +818,10 @@ static int __init cpufreq_gov_dbs_init(void)
 	cputime64_t wall;
 	u64 idle_time;
 	int cpu = get_cpu();
+
+#ifdef CONFIG_CPU_FREQ_DBG
+	pr_info("[DBG] %s\n", __func__);
+#endif
 
 	idle_time = get_cpu_idle_time_us(cpu, &wall);
 	put_cpu();

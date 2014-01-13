@@ -148,6 +148,26 @@ static ssize_t show_speed(struct cpufreq_policy *policy, char *buf)
 	return sprintf(buf, "%u\n", per_cpu(cpu_cur_freq, policy->cpu));
 }
 
+#ifdef CONFIG_CPU_FREQ_DBG
+static ssize_t show_userspace_test(struct kobject *kobj,
+				      struct attribute *attr, char *buf)
+{
+	return sprintf(buf, "%s\n", "userspace governor test");
+}
+
+define_one_global_ro(userspace_test);
+
+static struct attribute *userspace_attributes[] = {
+	&userspace_test.attr,
+	NULL
+};
+
+static struct attribute_group userspace_attr_group = {
+	.attrs = userspace_attributes,
+	.name = "userspace",
+};
+#endif
+
 static int cpufreq_governor_userspace(struct cpufreq_policy *policy,
 				   unsigned int event)
 {
@@ -156,12 +176,23 @@ static int cpufreq_governor_userspace(struct cpufreq_policy *policy,
 
 	switch (event) {
 	case CPUFREQ_GOV_START:
+#ifdef CONFIG_CPU_FREQ_DBG
+		pr_info("[DBG] %s START, cpu : %d\n", __func__, cpu);
+#endif
 		if (!cpu_online(cpu))
 			return -EINVAL;
 		BUG_ON(!policy->cur);
 		mutex_lock(&userspace_mutex);
 
 		if (cpus_using_userspace_governor == 0) {
+#ifdef CONFIG_CPU_FREQ_DBG
+			rc = sysfs_create_group(cpufreq_global_kobject,
+						&userspace_attr_group);
+			if (rc) {
+				mutex_unlock(&userspace_mutex);
+				return rc;
+			}
+#endif
 			cpufreq_register_notifier(
 					&userspace_cpufreq_notifier_block,
 					CPUFREQ_TRANSITION_NOTIFIER);
@@ -183,9 +214,16 @@ static int cpufreq_governor_userspace(struct cpufreq_policy *policy,
 		mutex_unlock(&userspace_mutex);
 		break;
 	case CPUFREQ_GOV_STOP:
+#ifdef CONFIG_CPU_FREQ_DBG
+		pr_info("[DBG] %s STOP, cpu : %d\n", __func__, cpu);
+#endif
 		mutex_lock(&userspace_mutex);
 		cpus_using_userspace_governor--;
 		if (cpus_using_userspace_governor == 0) {
+#ifdef CONFIG_CPU_FREQ_DBG
+			sysfs_remove_group(cpufreq_global_kobject,
+					   &userspace_attr_group);
+#endif
 			cpufreq_unregister_notifier(
 					&userspace_cpufreq_notifier_block,
 					CPUFREQ_TRANSITION_NOTIFIER);
@@ -199,6 +237,9 @@ static int cpufreq_governor_userspace(struct cpufreq_policy *policy,
 		mutex_unlock(&userspace_mutex);
 		break;
 	case CPUFREQ_GOV_LIMITS:
+#ifdef CONFIG_CPU_FREQ_DBG
+		pr_info("[DBG] %s LIMITS, cpu : %d\n", __func__, cpu);
+#endif
 		mutex_lock(&userspace_mutex);
 		pr_debug("limit event for cpu %u: %u - %u kHz, "
 			"currently %u kHz, last set to %u kHz\n",
