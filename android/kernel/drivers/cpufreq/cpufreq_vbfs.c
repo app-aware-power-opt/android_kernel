@@ -43,10 +43,10 @@
 #define MIN_FREQUENCY_UP_THRESHOLD		(11)
 #define MAX_FREQUENCY_UP_THRESHOLD		(100)
 
-#define CPUUSAGE_UP_THRESHOLD (30)
-#define CPUUSAGE_MIN_UP_THRESHOLD (50)
+#define CPUUSAGE_UP_THRESHOLD (40)
+#define CPUUSAGE_MIN_UP_THRESHOLD (80)
 #define CPUUSAGE_MIN_DOWN_THRESHOLD (30)
-#define CPUUSAGE_DOWN_THRESHOLD (-30)
+#define CPUUSAGE_DOWN_THRESHOLD (-40)
 #define CPUUSAGE_DOWN_THRESHOLD_LIMIT (30)
 #define THREAD_UP_THRESHOLD (2)
 #define THREAD_DOWN_THRESHOLD (-2)
@@ -719,11 +719,12 @@ int get_mem_portion(void)
  *  0 : no need to change
  */
 #define ADJ_NO_NEED 0
-#define ADJ_STEP 1
-#define ADJ_SCALE_BY_VARI 2
-#define ADJ_SCALE_BY_VARI_N_COND 3
-#define ADJ_SCALE_BY_LOAD 4
-#define ADJ_SCALE_BY_LOAD_N_COND 5
+#define ADJ_SETTLED 1
+#define ADJ_STEP 2
+#define ADJ_SCALE_BY_VARI 3
+#define ADJ_SCALE_BY_VARI_N_COND 4
+#define ADJ_SCALE_BY_LOAD 5
+#define ADJ_SCALE_BY_LOAD_N_COND 6
 
 static int adjcond = ADJ_NO_NEED;
 
@@ -1265,9 +1266,23 @@ static void vbfs_check_resources(struct cpu_vbfs_info_s *this_vbfs_info)
 	}
 #endif
 
-	if(adjcond != 0)
+	// set max/min freqeuncy to turn on/off online cpus
+	if(policy->cur == policy->max)
 	{
-		if(vbfs_tuners_ins.debug == 1)
+		freq_by_usage = policy->max;
+		freq_direction = CPUFREQ_RELATION_H;
+		adjcond = ADJ_SETTLED;
+	}
+	else if(policy->cur == policy->min)
+	{
+		freq_by_usage = policy->min;
+		freq_direction = CPUFREQ_RELATION_L;
+		adjcond = ADJ_SETTLED;
+	}
+
+	if(adjcond != ADJ_NO_NEED)
+	{
+		if((vbfs_tuners_ins.debug == 1) && (adjcond != ADJ_SETTLED))
 			pr_info("[DBG ADDJUST] Cur : %d, Next : %d, CPU usage : %d(%d), T : %d, M : %d, A: %d\n", (int)policy->cur, freq_by_usage, (int)load, cpu_usage_diff, threadcond, memcond, adjcond);
 		if (!vbfs_tuners_ins.powersave_bias) {
 			__cpufreq_driver_target(policy, (unsigned int)freq_by_usage,
@@ -1279,6 +1294,7 @@ static void vbfs_check_resources(struct cpu_vbfs_info_s *this_vbfs_info)
 				CPUFREQ_RELATION_L);
 		}
 	}
+
 }
 
 static void do_vbfs_timer(struct work_struct *work)
