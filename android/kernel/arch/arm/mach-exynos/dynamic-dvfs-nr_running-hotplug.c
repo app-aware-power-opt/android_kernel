@@ -1,6 +1,7 @@
 /* linux/arch/arm/mach-exynos/dynamic-dvfs-nr_running-hotplug.c
  *
  * Copyright (c) 2011 Samsung Electronics Co., Ltd.
+y
  *		http://www.samsung.com/
  *
  * EXYNOS4 - Integrated DVFS CPU hotplug
@@ -245,4 +246,4 @@ static int __init exynos4_integrated_dvfs_hotplug_init(void)
 					 CPUFREQ_TRANSITION_NOTIFIER);
 }
 
-//late_initcall(exynos4_integrated_dvfs_hotplug_init);
+late_initcall(exynos4_integrated_dvfs_hotplug_init);
