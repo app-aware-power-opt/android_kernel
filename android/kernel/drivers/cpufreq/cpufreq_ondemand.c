@@ -111,12 +111,18 @@ static struct dbs_tuners {
 	unsigned int sampling_down_factor;
 	unsigned int powersave_bias;
 	unsigned int io_is_busy;
+#ifdef CONFIG_CPU_FREQ_DBG
+	unsigned int debug;
+#endif
 } dbs_tuners_ins = {
 	.up_threshold = DEF_FREQUENCY_UP_THRESHOLD,
 	.sampling_down_factor = DEF_SAMPLING_DOWN_FACTOR,
 	.down_differential = DEF_FREQUENCY_DOWN_DIFFERENTIAL,
 	.ignore_nice = 0,
 	.powersave_bias = 0,
+#ifdef CONFIG_CPU_FREQ_DBG
+	.debug = 0,
+#endif
 };
 
 static inline cputime64_t get_cpu_idle_time_jiffy(unsigned int cpu,
@@ -254,6 +260,7 @@ show_one(io_is_busy, io_is_busy);
 show_one(up_threshold, up_threshold);
 #ifdef CONFIG_CPU_FREQ_DBG
 show_one(down_differential, down_differential);
+show_one(debug, debug);
 #endif
 show_one(sampling_down_factor, sampling_down_factor);
 show_one(ignore_nice_load, ignore_nice);
@@ -312,6 +319,17 @@ static ssize_t store_down_differential(struct kobject *a, struct attribute *b,
 		return -EINVAL;
 	}
 	dbs_tuners_ins.down_differential = input;
+	return count;
+}
+
+static ssize_t store_debug(struct kobject *a, struct attribute *b,
+				  const char *buf, size_t count)
+{
+	unsigned int input;
+	int ret;
+	ret = sscanf(buf, "%u", &input);
+
+	dbs_tuners_ins.debug = input;
 	return count;
 }
 #endif
@@ -392,6 +410,7 @@ define_one_global_rw(io_is_busy);
 define_one_global_rw(up_threshold);
 #ifdef CONFIG_CPU_FREQ_DBG
 define_one_global_rw(down_differential);
+define_one_global_rw(debug);
 #endif
 define_one_global_rw(sampling_down_factor);
 define_one_global_rw(ignore_nice_load);
@@ -403,6 +422,7 @@ static struct attribute *dbs_attributes[] = {
 	&up_threshold.attr,
 #ifdef CONFIG_CPU_FREQ_DBG
 	&down_differential.attr,
+	&debug.attr,
 #endif
 	&sampling_down_factor.attr,
 	&ignore_nice_load.attr,
@@ -432,13 +452,15 @@ static void dbs_freq_increase(struct cpufreq_policy *p, unsigned int freq)
 }
 
 #ifdef CONFIG_CPU_FREQ_DBG
-extern void status_monitor_write_file(unsigned char* data, unsigned int size);
+extern void status_monitor_write_file(unsigned char* data, unsigned int size, int force);
 extern int get_mem_portion(void);
 extern int get_status_monitor_flag(void);
-
+extern void get_cpu_onlines(struct cpufreq_policy *policy, char *buf, int size);
 #ifdef CONFIG_CPU_THREAD_NUM
 extern int run_thread_number;
 #endif
+
+static unsigned long long t_init = 0, t_prev = 0;
 #endif
 
 static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
@@ -448,14 +470,15 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 	struct cpufreq_policy *policy;
 	unsigned int j;
 #ifdef CONFIG_CPU_FREQ_DBG
-	int freq_avg;
-	int max_freq_avg;
-	unsigned int max_load;
+	int freq_avg = 0;
+	int max_freq_avg = 0;
+	unsigned int max_load = 0;
 	char file_buf[100];
-	unsigned long long t;
-	unsigned long nanosec_rem;
-	int this_cpu;
+	unsigned long long t = 0;
+	unsigned long nanosec_rem = 0;
+	int this_cpu = 0;
 	int mem_portion = 0;
+	char cpu_online_mask[10];;
 #endif
 
 	this_dbs_info->freq_lo = 0;
@@ -472,9 +495,6 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 	 * Frequency reduction happens at minimum steps of
 	 * 5% (default) of current frequency
 	 */
-#ifdef CONFIG_CPU_FREQ_DBG
-	memset(file_buf, 0, sizeof(file_buf));
-#endif
 
 	/* Get Absolute Load - in terms of freq */
 	max_load_freq = 0;
@@ -558,13 +578,29 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 #ifdef CONFIG_CPU_FREQ_DBG
 	if(get_status_monitor_flag() == 1)
 	{
+		memset(file_buf, 0, sizeof(file_buf));
+		memset(cpu_online_mask, 0, sizeof(cpu_online_mask));
+		
 		this_cpu = smp_processor_id();
 		t = cpu_clock(this_cpu);
 		nanosec_rem = do_div(t, 1000000000);
+
+		if(t_init == 0)
+		{
+			t_init = t_prev = t;
+			printk(KERN_INFO " %d", 0);
+		}
+		if(t_prev != t)
+		{
+			t_prev = t;
+			printk(KERN_INFO " %d", (int)(t_prev-t_init));
+		}
+
+		get_cpu_onlines(policy, cpu_online_mask, sizeof(cpu_online_mask));
 		mem_portion = get_mem_portion();
-		sprintf(file_buf, "%5lu.%06lu, %7u, %7d, %7u, %7d, %7d\n", (unsigned long) t, nanosec_rem / 1000, max_load, max_freq_avg, policy->cur, run_thread_number, mem_portion);
-pr_info("%s\n", file_buf);
-		status_monitor_write_file(file_buf, sizeof(file_buf));
+		
+		sprintf(file_buf, "%5lu.%06lu, %7u, %9d, %9u, %7d, %7d, %7s, %7s\n", (unsigned long) t, nanosec_rem / 1000, max_load, max_freq_avg, policy->cur, run_thread_number, mem_portion, cpu_online_mask, "N/A");
+		status_monitor_write_file(file_buf, (unsigned int)strlen(file_buf), 0);
 	}
 #endif
 
@@ -575,7 +611,8 @@ pr_info("%s\n", file_buf);
 			this_dbs_info->rate_mult =
 				dbs_tuners_ins.sampling_down_factor;
 #ifdef CONFIG_CPU_FREQ_DBG
-		pr_info("[DBG UP to MAX][%d] avg_freq : %d, load_freq : %d, load : %d, cur_freq : %d, up_t_freq: %d, up_t : %d\n", policy->cpu, freq_avg, max_load_freq, max_load_freq/freq_avg, policy->cur, dbs_tuners_ins.up_threshold * policy->cur, dbs_tuners_ins.up_threshold);
+		if(dbs_tuners_ins.debug == 1)
+			pr_info("[DBG UP to MAX][%d] avg_freq : %d, load_freq : %d, load : %d, cur_freq : %d, up_t_freq: %d, up_t : %d\n", policy->cpu, freq_avg, max_load_freq, max_load_freq/freq_avg, policy->cur, dbs_tuners_ins.up_threshold * policy->cur, dbs_tuners_ins.up_threshold);
 #endif
 		dbs_freq_increase(policy, policy->max);
 		return;
@@ -608,7 +645,7 @@ pr_info("%s\n", file_buf);
 			freq_next = policy->min;
 
 #ifdef CONFIG_CPU_FREQ_DBG
-		if(policy->cur != policy->min)
+		if((policy->cur != policy->min)&&(dbs_tuners_ins.debug == 1))
 		{
 			pr_info("[DBG DOWN] [%d] avg_freq : %d, load_freq : %d,  load : %d, cur_freq : %d, down_t_freq: %d, down_t : %d, next_freq : %d\n", policy->cpu, freq_avg, max_load_freq, max_load_freq/freq_avg, policy->cur, (dbs_tuners_ins.up_threshold - dbs_tuners_ins.down_differential)*policy->cur, dbs_tuners_ins.up_threshold - dbs_tuners_ins.down_differential, freq_next);
 		}

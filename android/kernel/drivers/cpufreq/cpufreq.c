@@ -613,9 +613,11 @@ static struct delayed_work status_monitor_work;
 static unsigned int status_monitor_period = 0;
 int status_monitor_flag = 0;
 
+#define STATUS_MON_FILE_NAME "/data/cpulog/cpulog2.txt"
+static char status_monitor_buf[256*1024];
 static struct file* status_monitor_filp = NULL;
-static mm_segment_t status_monitor_oldfs;
-static ssize_t status_monitor_offset = 0;
+//static mm_segment_t status_monitor_oldfs;
+static loff_t status_monitor_offset = 0;
 
 int get_status_monitor_flag(void)
 {
@@ -628,59 +630,112 @@ void set_status_monitor_flag(int flag)
 	status_monitor_flag = flag;
 }
 
-void status_monitor_write_file(unsigned char* data, unsigned int size)
+void status_monitor_write_file(unsigned char* data, unsigned int size, int force)
 {
-	int ret;
-	int err = -1;
+	//int ret;
+	//int err = -1;
+	//mm_segment_t oldfs;
+
+	//pr_info("[%u / %d] : %s", size, (int)status_monitor_offset, data);
+
+	if(status_monitor_offset + size > sizeof(status_monitor_buf))
+	{
+		pr_info("buffer overflow, make ring buffer\n");
+		status_monitor_offset = 0;
+		//set_status_monitor_flag(0);
+		//return;
+	}
+	strncpy(&status_monitor_buf[status_monitor_offset], data, size);
+	status_monitor_offset += size;
+	
+/*
+	if((force == 0) && (get_status_monitor_flag() == 0))
+	{
+		pr_info("%s, flag is not set, return\n", __func__);
+		return;
+	}
+	
+	oldfs = get_fs();
+	set_fs(get_ds());
 
 	if(status_monitor_filp == NULL)
 	{
-		status_monitor_oldfs = get_fs();
-		set_fs(get_ds());
-		status_monitor_filp = filp_open("/data/cpulog/cpulog.txt", O_CREAT|O_TRUNC, S_IRWXUGO);
+		pr_info("%s, open %s\n", __func__, STATUS_MON_FILE_NAME);
+		status_monitor_filp = filp_open(STATUS_MON_FILE_NAME, O_CREAT|O_TRUNC|O_LARGEFILE, S_IRWXUGO);
 		if(IS_ERR(status_monitor_filp)) {
 	       	err = PTR_ERR(status_monitor_filp);
 			pr_err("[DBG] file open failed err : %d\n", err);
+			set_fs(oldfs);
 	       	return;
 		}
 	}
 
-	ret = vfs_write(status_monitor_filp, data, size, &status_monitor_offset);
-	status_monitor_offset += ret;
-	pr_info("%s offset : %ld\n", __func__, status_monitor_offset);
+	ret = (int)status_monitor_filp->f_op->write(status_monitor_filp, (const char *)data, (size_t)size, &status_monitor_filp->f_pos);
 
+	set_fs(oldfs);
+	pr_info("%s offset : %d, ret : %d, size : %u\n", __func__, (int)status_monitor_filp->f_pos, ret, size);
+*/
 }
-	
-static void status_monitor_timer(struct work_struct *work)
+
+static void status_monitor_wq(struct work_struct *work)
 {
-	cancel_delayed_work_sync(&status_monitor_work);
+	int ret;
+	mm_segment_t oldfs;
+	int err = -1;
 	
 	set_status_monitor_flag(0);
-
 	pr_info("%s stop status monitor, flag : %d\n", __func__, get_status_monitor_flag());
-	
-	if(status_monitor_filp != NULL)
+
+	if(status_monitor_filp == NULL)
 	{
-		vfs_fsync(status_monitor_filp, 0);
-		set_fs(status_monitor_oldfs);
-		filp_close(status_monitor_filp, NULL);
-		status_monitor_filp = NULL;
-		status_monitor_offset = 0;
+		pr_info("%s, open %s\n", __func__, STATUS_MON_FILE_NAME);
+		//status_monitor_filp = filp_open(STATUS_MON_FILE_NAME, O_CREAT|O_TRUNC|O_LARGEFILE, S_IRWXUGO);
+		status_monitor_filp = filp_open(STATUS_MON_FILE_NAME, O_RDWR | O_TRUNC, S_IRWXUGO);
+
+		//status_monitor_filp == ERR_PTR(-EEXIST)
+
+		
+		if(IS_ERR(status_monitor_filp)) {
+			pr_info("%s, %s is not exist, recreate\n", __func__, STATUS_MON_FILE_NAME);
+			status_monitor_filp = filp_open(STATUS_MON_FILE_NAME, O_CREAT | O_RDWR | O_LARGEFILE, S_IRWXUGO);
+			if(IS_ERR(status_monitor_filp)) {
+		       	err = PTR_ERR(status_monitor_filp);
+				pr_err("[DBG] file open failed err : %d\n", err);
+		       	return;
+			}
+		}
 	}
+
+	oldfs = get_fs();
+	set_fs(get_ds());
+	status_monitor_filp->f_pos = 0;
+	ret = status_monitor_filp->f_op->write(status_monitor_filp, (const char *)status_monitor_buf, (size_t)status_monitor_offset, &status_monitor_filp->f_pos);
+	set_fs(oldfs);
+
+	//msleep(5000);
+	
+	//status_monitor_filp->f_op->fsync(status_monitor_filp, 0);
+	filp_close(status_monitor_filp, NULL);
+
+	pr_info("%s closed, %d(%d) written\n", STATUS_MON_FILE_NAME, ret, (int)status_monitor_offset);
+
+	//pr_info("%s", status_monitor_buf);
+	
+	status_monitor_offset = 0;
 
 }
 
 static ssize_t show_status_monitor(struct cpufreq_policy *policy, char *buf)
 {
-
+	pr_info("%s", status_monitor_buf);
 	return sprintf(buf, "Usage : echo # > status_monitor\nThis will monitor status for # seconds\n");
+	//return sprintf(buf, "%s", status_monitor_buf);
 }
 static ssize_t store_status_monitor(struct cpufreq_policy *policy,
 					const char *buf, size_t count)
 {
 	int ret;
-	int delay = 0;
-	int err = -1;
+	unsigned long delay = 0;
 	char file_buf[100];
 		
 	ret = sscanf(buf, "%d", &status_monitor_period);
@@ -688,26 +743,21 @@ static ssize_t store_status_monitor(struct cpufreq_policy *policy,
 		return -EINVAL;
 
 	pr_info("%s, %u sec is given\n", __func__, status_monitor_period);
-	status_monitor_period = status_monitor_period*1000*1000;
-	delay = usecs_to_jiffies(status_monitor_period);
+	status_monitor_period = status_monitor_period*1000;
+	delay = msecs_to_jiffies(status_monitor_period);
 
-	status_monitor_oldfs = get_fs();
-	set_fs(get_ds());
-	status_monitor_filp = filp_open("/data/cpulog/cpulog.txt", O_CREAT|O_TRUNC, S_IRWXUGO);
-	if(IS_ERR(status_monitor_filp)) {
-		pr_err("[DBG] file open failed err : %d\n", err);
-       	err = PTR_ERR(status_monitor_filp);
-       	return err;
-	}
+	memset(status_monitor_buf, 0, sizeof(status_monitor_buf));
+	status_monitor_filp = NULL;
+	status_monitor_offset = 0;
 
-	INIT_DELAYED_WORK_DEFERRABLE(&status_monitor_work, status_monitor_timer);
-	schedule_delayed_work_on(0, &status_monitor_work, delay);
-
-	pr_info("%s, %d sec is set, delay in jiffies : %d\n", __func__, status_monitor_period/1000/1000, delay);
+	////pr_info("%s, %u sec is set, delay in jiffies : %ld\n", __func__, status_monitor_period/1000, delay);
 
 	memset(file_buf, 0, sizeof(file_buf));
-	sprintf(file_buf, "[%5.6s],[%5.5s],[%5.5s],[%5.5s],[%5.5s],[%5.5s]\n", "time", "cpu", "freq_avg", "freq_cur", "thread", "mem");
-	status_monitor_write_file(file_buf, sizeof(file_buf));
+	sprintf(file_buf, "[%10s],[%6s],[%6s],[%6s],[%6s],[%6s],[%6s],[%6s]\n", "time", "cpu", "freq_avg", "freq_cur", "thread", "mem", "cpu_on", "adj");
+	status_monitor_write_file(file_buf, (unsigned int)strlen(file_buf), 1);
+
+	INIT_DELAYED_WORK(&status_monitor_work, status_monitor_wq);
+	schedule_delayed_work(&status_monitor_work, delay);
 	
 	set_status_monitor_flag(1);
 
