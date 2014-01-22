@@ -434,7 +434,6 @@ static ssize_t show_scaling_governor(struct cpufreq_policy *policy, char *buf)
 	return -EINVAL;
 }
 
-
 /**
  * store_scaling_governor - store policy for the specified CPU
  */
@@ -630,14 +629,13 @@ void set_status_monitor_flag(int flag)
 	status_monitor_flag = flag;
 }
 
+/*
+ * storing logs will be started by writting # seconds on /sys/devices/system/cpu/cpu0/cpufreq/status_monitor
+ * logs will be stored on the buffer to prevent delays and they will be written to the disk later by work queue
+ * be careful of buffer size
+ */
 void status_monitor_write_file(unsigned char* data, unsigned int size, int force)
 {
-	//int ret;
-	//int err = -1;
-	//mm_segment_t oldfs;
-
-	//pr_info("[%u / %d] : %s", size, (int)status_monitor_offset, data);
-
 	if(status_monitor_offset + size > sizeof(status_monitor_buf))
 	{
 		pr_info("buffer overflow, make ring buffer\n");
@@ -647,36 +645,12 @@ void status_monitor_write_file(unsigned char* data, unsigned int size, int force
 	}
 	strncpy(&status_monitor_buf[status_monitor_offset], data, size);
 	status_monitor_offset += size;
-	
-/*
-	if((force == 0) && (get_status_monitor_flag() == 0))
-	{
-		pr_info("%s, flag is not set, return\n", __func__);
-		return;
-	}
-	
-	oldfs = get_fs();
-	set_fs(get_ds());
-
-	if(status_monitor_filp == NULL)
-	{
-		pr_info("%s, open %s\n", __func__, STATUS_MON_FILE_NAME);
-		status_monitor_filp = filp_open(STATUS_MON_FILE_NAME, O_CREAT|O_TRUNC|O_LARGEFILE, S_IRWXUGO);
-		if(IS_ERR(status_monitor_filp)) {
-	       	err = PTR_ERR(status_monitor_filp);
-			pr_err("[DBG] file open failed err : %d\n", err);
-			set_fs(oldfs);
-	       	return;
-		}
-	}
-
-	ret = (int)status_monitor_filp->f_op->write(status_monitor_filp, (const char *)data, (size_t)size, &status_monitor_filp->f_pos);
-
-	set_fs(oldfs);
-	pr_info("%s offset : %d, ret : %d, size : %u\n", __func__, (int)status_monitor_filp->f_pos, ret, size);
-*/
 }
 
+/*
+ * store logs from the buffer to the disk
+ * this function will be activated # seconds later, # is written on /sys/devices/system/cpu/cpu0/cpufreq/status_monitor
+ */
 static void status_monitor_wq(struct work_struct *work)
 {
 	int ret;
