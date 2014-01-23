@@ -44,8 +44,8 @@
 #define MAX_FREQUENCY_UP_THRESHOLD		(100)
 
 #define CPUUSAGE_UP_THRESHOLD (40)
-#define CPUUSAGE_MIN_UP_THRESHOLD (60)
-#define CPUUSAGE_MIN_DOWN_THRESHOLD (40)
+#define CPUUSAGE_MIN_UP_THRESHOLD (50)
+#define CPUUSAGE_MIN_DOWN_THRESHOLD (30)
 #define CPUUSAGE_DOWN_THRESHOLD (-40)
 //#define CPUUSAGE_DOWN_THRESHOLD_LIMIT (30)
 #define THREAD_UP_THRESHOLD (2)
@@ -78,12 +78,71 @@ static void do_vbfs_timer(struct work_struct *work);
 static int cpufreq_governor_vbfs(struct cpufreq_policy *policy,
 				unsigned int event);
 
+static DEFINE_MUTEX(vbfs_mutex);
+
+static int l_vbfs_cpufreq_set_flag = 0;
+
+static int cpufreq_set(struct cpufreq_policy *policy, unsigned int freq)
+{
+	int ret = -EINVAL;
+
+	l_vbfs_cpufreq_set_flag = 1;
+
+#ifdef CONFIG_CPU_FREQ_DBG
+	pr_info("cpufreq_set for cpu %u, freq %u kHz\n", policy->cpu, freq);
+#else
+	pr_debug("cpufreq_set for cpu %u, freq %u kHz\n", policy->cpu, freq);
+#endif
+
+	mutex_lock(&vbfs_mutex);
+/*
+	if (!per_cpu(cpu_is_managed, policy->cpu))
+		goto err;
+
+	per_cpu(cpu_set_freq, policy->cpu) = freq;
+
+	if (freq < per_cpu(cpu_min_freq, policy->cpu))
+		freq = per_cpu(cpu_min_freq, policy->cpu);
+	if (freq > per_cpu(cpu_max_freq, policy->cpu))
+		freq = per_cpu(cpu_max_freq, policy->cpu);
+*/
+	if(freq < policy->min)
+		freq = policy->min;
+	if(freq > policy->max)
+		freq = policy->max;
+
+	/*
+	 * We're safe from concurrent calls to ->target() here
+	 * as we hold the userspace_mutex lock. If we were calling
+	 * cpufreq_driver_target, a deadlock situation might occur:
+	 * A: cpufreq_set (lock userspace_mutex) ->
+	 *      cpufreq_driver_target(lock policy->lock)
+	 * B: cpufreq_set_policy(lock policy->lock) ->
+	 *      __cpufreq_governor ->
+	 *         cpufreq_governor_userspace (lock userspace_mutex)
+	 */
+	ret = __cpufreq_driver_target(policy, freq, CPUFREQ_RELATION_L);
+
+ err:
+	mutex_unlock(&vbfs_mutex);
+	return ret;
+}
+
+
+static ssize_t show_speed(struct cpufreq_policy *policy, char *buf)
+{
+	l_vbfs_cpufreq_set_flag = 0;
+	return sprintf(buf, "%u\n", policy->cur);
+}
+
 #ifndef CONFIG_CPU_FREQ_DEFAULT_GOV_VBFS
 static
 #endif
 struct cpufreq_governor cpufreq_gov_vbfs = {
        .name                   = "vbfs",
        .governor               = cpufreq_governor_vbfs,
+       .store_setspeed	= cpufreq_set,
+       .show_setspeed	= show_speed,
        .max_transition_latency = TRANSITION_LATENCY_LIMIT,
        .owner                  = THIS_MODULE,
 };
@@ -119,7 +178,7 @@ static unsigned int vbfs_enable;	/* number of CPUs using this policy */
 /*
  * vbfs_mutex protects vbfs_enable in governor start/stop.
  */
-static DEFINE_MUTEX(vbfs_mutex);
+//static DEFINE_MUTEX(vbfs_mutex);
 
 /*
  * adj status
@@ -170,7 +229,8 @@ static struct vbfs_tuners {
 	unsigned int powersave_bias;
 	unsigned int io_is_busy;
 	unsigned int debug;
-	unsigned int lazy_freq_step_cnt;
+	unsigned int lazy_freq_step_up_cnt;
+	unsigned int lazy_freq_step_down_cnt;
 } vbfs_tuners_ins = {
 	.cpu_usage_up_threshold = CPUUSAGE_MIN_UP_THRESHOLD,
 	.sampling_down_factor = DEF_SAMPLING_DOWN_FACTOR,
@@ -184,7 +244,8 @@ static struct vbfs_tuners {
 	.ignore_nice = 0,
 	.powersave_bias = 0,
 	.debug = 0,
-	.lazy_freq_step_cnt = 3,
+	.lazy_freq_step_up_cnt = 1,
+	.lazy_freq_step_down_cnt = 3,
 };
 
 static struct vbfs_resources {
@@ -371,7 +432,8 @@ show_one(sampling_down_factor, sampling_down_factor);
 show_one(ignore_nice_load, ignore_nice);
 show_one(powersave_bias, powersave_bias);
 show_one(debug, debug);
-show_one(lazy_freq_step_cnt, lazy_freq_step_cnt);
+show_one(lazy_freq_step_up_cnt, lazy_freq_step_up_cnt);
+show_one(lazy_freq_step_down_cnt, lazy_freq_step_down_cnt);
 
 static ssize_t store_sampling_rate(struct kobject *a, struct attribute *b,
 				   const char *buf, size_t count)
@@ -611,14 +673,26 @@ static ssize_t store_debug(struct kobject *a, struct attribute *b,
 
 static unsigned int l_lazy_freq_step_up_cnt = 0;
 static unsigned int l_lazy_freq_step_down_cnt = 0;
-static ssize_t store_lazy_freq_step_cnt(struct kobject *a, struct attribute *b,
+static ssize_t store_lazy_freq_step_up_cnt(struct kobject *a, struct attribute *b,
 				  const char *buf, size_t count)
 {
 	unsigned int input;
 	int ret;
 	ret = sscanf(buf, "%u", &input);
 
-	vbfs_tuners_ins.lazy_freq_step_cnt = input;
+	vbfs_tuners_ins.lazy_freq_step_up_cnt = input;
+	pr_info("%s, value : %u", __func__, input);
+	return count;
+}
+
+static ssize_t store_lazy_freq_step_down_cnt(struct kobject *a, struct attribute *b,
+				  const char *buf, size_t count)
+{
+	unsigned int input;
+	int ret;
+	ret = sscanf(buf, "%u", &input);
+
+	vbfs_tuners_ins.lazy_freq_step_down_cnt = input;
 	pr_info("%s, value : %u", __func__, input);
 	return count;
 }
@@ -637,7 +711,8 @@ define_one_global_rw(sampling_down_factor);
 define_one_global_rw(ignore_nice_load);
 define_one_global_rw(powersave_bias);
 define_one_global_rw(debug);
-define_one_global_rw(lazy_freq_step_cnt);
+define_one_global_rw(lazy_freq_step_up_cnt);
+define_one_global_rw(lazy_freq_step_down_cnt);
 
 static struct attribute *vbfs_attributes[] = {
 	&sampling_rate_min.attr,
@@ -655,7 +730,8 @@ static struct attribute *vbfs_attributes[] = {
 	&powersave_bias.attr,
 	&io_is_busy.attr,
 	&debug.attr,
-	&lazy_freq_step_cnt.attr,
+	&lazy_freq_step_up_cnt.attr,
+	&lazy_freq_step_down_cnt.attr,
 	NULL
 };
 
@@ -812,11 +888,24 @@ int selectNextFrequencyByLoad(struct cpufreq_policy *policy,  unsigned int cpuUs
 	cpufreq_frequency_table_target(policy, vbfs_info->freq_table, freq_start, CPUFREQ_RELATION_L, &freqStartIndex);
 	cpufreq_frequency_table_target(policy, vbfs_info->freq_table, freq_end, CPUFREQ_RELATION_H, &freqEndIndex);
 
+	/*
 	if(direction == ADJ_STEP_UP) {
 		// increase 33%
 		freqadj = freqStartIndex - (freqStartIndex - freqEndIndex + 1)/3;
 	}	
 	else if(direction == ADJ_STEP_DOWN) {
+		//decrease 33%
+		freqadj = (freqStartIndex - freqEndIndex + 1)/3 + freqEndIndex;
+	}
+	else {
+		// set cpu utilization ratio frequency from start to end index
+		freqadj = (freqStartIndex - freqEndIndex + 1)*cpuUsage - 1;
+		if(freqadj < 0)
+			freqadj = 0;
+		freqadj = (int)abs(freqadj/100 - freqStartIndex);
+	}
+	*/
+	if((direction == ADJ_STEP_DOWN) || (direction == ADJ_SCALE_DOWN)) {
 		//decrease 33%
 		freqadj = (freqStartIndex - freqEndIndex + 1)/3 + freqEndIndex;
 	}
@@ -835,18 +924,21 @@ int selectNextFrequencyByLoad(struct cpufreq_policy *policy,  unsigned int cpuUs
 		freqadj = freqIndex + 1;
 	}
 
-	if((direction == ADJ_STEP_UP) || (direction == ADJ_STEP_DOWN)) {
-		if((l_lazy_freq_step_up_cnt == vbfs_tuners_ins.lazy_freq_step_cnt) || (l_lazy_freq_step_down_cnt == vbfs_tuners_ins.lazy_freq_step_cnt)) {
+	// prevent too frequent frequency scaling
+	//if((direction == ADJ_STEP_UP) || (direction == ADJ_STEP_DOWN)) {
+	if(direction == ADJ_STEP_DOWN) {
+		//if((l_lazy_freq_step_up_cnt == vbfs_tuners_ins.lazy_freq_step_up_cnt) || (l_lazy_freq_step_down_cnt == vbfs_tuners_ins.lazy_freq_step_down_cnt)) {
+		if(l_lazy_freq_step_down_cnt == vbfs_tuners_ins.lazy_freq_step_down_cnt) {
 			vbfs_resources_ins.next_freq = vbfs_info->freq_table[freqadj].frequency;
 			l_lazy_freq_step_up_cnt = l_lazy_freq_step_down_cnt = 0;
 			if(vbfs_tuners_ins.debug == 1)
-				pr_info("[DBG] stat : %d, lazy cnt over %u, use step frequency, cur : %u, next : %u\n", direction, vbfs_tuners_ins.lazy_freq_step_cnt, policy->cur, vbfs_resources_ins.next_freq);
+				pr_info("[DBG] stat : %d, lazy cnt over (%u/%u), use step frequency, cur : %u, next : %u\n", direction, vbfs_tuners_ins.lazy_freq_step_up_cnt, vbfs_tuners_ins.lazy_freq_step_down_cnt, policy->cur, vbfs_resources_ins.next_freq);
 		}
 		else {
 			// maintain current frequency to prevent frequent step up or down
 			vbfs_resources_ins.next_freq = policy->cur;
 			if(vbfs_tuners_ins.debug == 1)
-				pr_info("[DBG] stat : %d, lazy cnt under %u(%u/%u), cur : %u\n", direction, vbfs_tuners_ins.lazy_freq_step_cnt, l_lazy_freq_step_up_cnt, l_lazy_freq_step_down_cnt, policy->cur);
+				pr_info("[DBG] stat : %d, lazy cnt under %u/%u(%u/%u), cur : %u\n", direction, vbfs_tuners_ins.lazy_freq_step_up_cnt, vbfs_tuners_ins.lazy_freq_step_down_cnt, l_lazy_freq_step_up_cnt, l_lazy_freq_step_down_cnt, policy->cur);
 		}
 	}
 	else {
@@ -979,6 +1071,12 @@ static int vbfs_initialize_resources(struct cpufreq_policy *policy)
 
 	/* Get Absolute Load - in terms of freq */
 	get_max_load_freq(policy);
+
+	if(vbfs_resources_ins.max_load > 100) {
+		pr_err("[DBG] load : %u(%d) overflow, set maximum load\n", vbfs_resources_ins.max_load, (int)vbfs_resources_ins.max_load);
+		vbfs_resources_ins.max_load = 100;
+	}
+	
 	vbfs_resources_ins.load_diff = (int)(vbfs_resources_ins.max_load - vbfs_resources_ins.load_prev);
 	vbfs_resources_ins.load_prev = vbfs_resources_ins.max_load;
 
@@ -1249,11 +1347,6 @@ static void vbfs_check_resources(struct cpu_vbfs_info_s *this_vbfs_info)
 		return;
 	}
 
-	if(vbfs_resources_ins.max_load > 100) {
-		pr_err("[DBG] load : %u(%d) overflow, return\n", vbfs_resources_ins.max_load, (int)vbfs_resources_ins.max_load);
-		return;
-	}
-
 	loadcond = checkCPULoadCond(policy, vbfs_resources_ins.max_load, policy->cur, vbfs_resources_ins.load_diff);
 	if(loadcond == ADJ_INVALID) {
 		pr_err("[DBG] invalid frequency decision, return\n");
@@ -1270,7 +1363,7 @@ static void vbfs_check_resources(struct cpu_vbfs_info_s *this_vbfs_info)
 #endif
 
 	// if current frequency is required to be changed, set the selected frequency
-	if((vbfs_resources_ins.vbfs_adj != ADJ_NO_NEED) && (vbfs_resources_ins.vbfs_adj != ADJ_INVALID))
+	if((vbfs_resources_ins.vbfs_adj != ADJ_NO_NEED) && (vbfs_resources_ins.vbfs_adj != ADJ_INVALID) && (l_vbfs_cpufreq_set_flag == 0))
 	{
 		if((vbfs_tuners_ins.debug == 1) && (vbfs_resources_ins.vbfs_adj != ADJ_SETTLED))
 			pr_info("[DBG ADDJUST] Cur : %d, Next : %d, CPU usage : %d(%d), T : %d, M : %d, A: %d\n", (int)policy->cur, vbfs_resources_ins.next_freq, (int)vbfs_resources_ins.load_prev, vbfs_resources_ins.load_diff, threadcond, memcond, vbfs_resources_ins.vbfs_adj);

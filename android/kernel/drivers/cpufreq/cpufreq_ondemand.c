@@ -602,6 +602,9 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 		sprintf(file_buf, "%5lu.%06lu, %7u, %9d, %9u, %7d, %7d, %7s, %7s\n", (unsigned long) t, nanosec_rem / 1000, max_load, max_freq_avg, policy->cur, run_thread_number, mem_portion, cpu_online_mask, "N/A");
 		status_monitor_write_file(file_buf, (unsigned int)strlen(file_buf), 0);
 	}
+	else if(t_init != 0) {
+		t_init = 0;
+	}
 #endif
 
 	/* Check for frequency increase */
